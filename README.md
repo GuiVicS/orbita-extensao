@@ -73,3 +73,7 @@ O script só aplica se cada trecho aparecer exatamente uma vez e valida a sintax
 - Registro de consentimento (opt-in) por contato
 - Descadastro automático ("SAIR")
 - Aviso ao usuário sobre risco de banimento / Termos do WhatsApp
+
+## Atualizador para Windows
+
+O atualizador portable do Orbita está na pasta [`updater/`](updater/). Consulte o [README do atualizador](updater/README.md) para executar, gerar o `.exe` e understand o fluxo de atualização. Os arquivos dessa pasta são excluídos do ZIP da extensão.
