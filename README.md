@@ -1,8 +1,13 @@
-# Órbita — build da extensão (com correções)
+# Órbita — build da extensão
 
-Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web, com correções aplicadas diretamente nos arquivos minificados.
+Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
-> ⚠️ As correções foram feitas **no build**, não no código-fonte. Um novo build a partir do fonte as desfaz — replique-as no fonte (detalhes abaixo e em `patches/`).
+> A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
+
+## Novidades da 1.2.0
+
+- **Módulo CRM** (desligado por padrão): funil de vendas em Kanban com os clientes das listas de contatos — colunas editáveis, arrastar e soltar, histórico e notas por cliente. Ative em **Opções da extensão → Módulos**.
+- Banco local (IndexedDB) atualizado para a versão 2; listas, campanhas e histórico existentes são mantidos.
 
 ## Instalar
 

@@ -1,107 +1,73 @@
-<!doctype html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Órbita — Variações com IA</title>
-  <link rel="icon" href="icons/icon32.png">
-  <style>
-    :root {
-      --bg: #f6f7f9; --card: #fff; --fg: #1a1d23; --muted: #626a78; --border: #dde1e7;
-      --accent: #5b4fe0; --accent-fg: #fff; --ok: #1f8a4c; --err: #c23b3b; --code: #eef0f4;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #111318; --card: #1a1d24; --fg: #e8eaef; --muted: #9aa2b1; --border: #2c313b;
-        --accent: #8b82ff; --accent-fg: #111318; --ok: #4cc281; --err: #ef7070; --code: #242833;
-      }
-    }
-    * { box-sizing: border-box; }
-    body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-    main { max-width: 680px; margin: 0 auto; padding: 32px 16px 64px; }
-    header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
-    header img { width: 36px; height: 36px; }
-    h1 { font-size: 20px; margin: 0; }
-    header p { margin: 0; color: var(--muted); font-size: 13px; }
-    section { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
-    h2 { font-size: 15px; margin: 0 0 12px; }
-    label { display: block; font-weight: 600; font-size: 13px; margin: 14px 0 6px; }
-    label.inline { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; margin: 0; cursor: pointer; }
-    input[type=text], input[type=password], textarea {
-      width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px;
-      background: var(--bg); color: var(--fg); font: inherit;
-    }
-    textarea { resize: vertical; min-height: 72px; }
-    input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
-    input[type=range] { width: 100%; accent-color: var(--accent); }
-    .hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
-    .row { display: flex; gap: 8px; }
-    .row > input { flex: 1; }
-    button { padding: 9px 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--fg); font: inherit; font-weight: 600; cursor: pointer; }
-    button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
-    button:disabled { opacity: .6; cursor: default; }
-    .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
-    .status { font-size: 13px; }
-    .status.ok { color: var(--ok); } .status.err { color: var(--err); }
-    pre { white-space: pre-wrap; word-break: break-word; background: var(--code); border-radius: 8px; padding: 12px; margin: 12px 0 0; font: 14px/1.5 inherit; }
-    pre:empty { display: none; }
-    code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
-    a { color: var(--accent); }
-  </style>
-</head>
-<body>
+<!doctype html><html lang=pt-BR><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Órbita — Configurações</title><link rel=icon href=icons/icon32.png><style>:root{--bg:#f6f7f9;--card:#fff;--fg:#1a1d23;--muted:#626a78;--border:#dde1e7;--accent:#5b4fe0;--accent-fg:#fff;--ok:#1f8a4c;--err:#c23b3b;--code:#eef0f4}@media (prefers-color-scheme:dark){:root{--bg:#111318;--card:#1a1d24;--fg:#e8eaef;--muted:#9aa2b1;--border:#2c313b;--accent:#8b82ff;--accent-fg:#111318;--ok:#4cc281;--err:#ef7070;--code:#242833}}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}main{max-width:680px;margin:0 auto;padding:32px 16px 64px}header{display:flex;align-items:center;gap:12px;margin-bottom:24px}header img{width:36px;height:36px}h1{font-size:20px;margin:0}header p{margin:0;color:var(--muted);font-size:13px}section{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px}h2{font-size:15px;margin:0 0 12px}label{display:block;font-weight:600;font-size:13px;margin:14px 0 6px}label.inline{display:flex;align-items:center;gap:10px;font-weight:600;font-size:15px;margin:0;cursor:pointer}.module+.module{border-top:1px solid var(--border);margin-top:14px;padding-top:14px}.module .hint{margin-left:28px}input[type=password],input[type=text],textarea{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}textarea{resize:vertical;min-height:72px}input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent)}input[type=range]{width:100%;accent-color:var(--accent)}.hint{color:var(--muted);font-size:13px;margin:6px 0 0}.row{display:flex;gap:8px}.row>input{flex:1}button{padding:9px 16px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--fg);font:inherit;font-weight:600;cursor:pointer}button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}button:disabled{opacity:.6;cursor:default}.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:16px}.status{font-size:13px}.status.ok{color:var(--ok)}.status.err{color:var(--err)}pre{white-space:pre-wrap;word-break:break-word;background:var(--code);border-radius:8px;padding:12px;margin:12px 0 0;font:14px/1.5 inherit}pre:empty{display:none}code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:13px}a{color:var(--accent)}</style></head><body>
 <main>
   <header>
-    <img src="icons/icon48.png" alt="">
+    <img src=icons/icon48.png alt>
     <div>
-      <h1>Variações com IA</h1>
-      <p>Cada contato recebe uma paráfrase diferente da mensagem, gerada pelo Groq.</p>
+      <h1>Configurações</h1>
+      <p>Módulos da extensão e variações de mensagem com IA.</p>
     </div>
   </header>
 
   <section>
-    <label class="inline"><input type="checkbox" id="enabled"> Ativar paráfrase nos disparos</label>
-    <p class="hint">A IA reescreve o texto (e a legenda de mídias) antes de cada envio. As variáveis como <code>{{nome}}</code> e os links são preservados. Se a IA falhar, demorar mais de 20&nbsp;s ou alterar uma variável ou link, o texto original é enviado.</p>
-
-    <label for="apiKey">Chave da API do Groq</label>
-    <div class="row">
-      <input type="password" id="apiKey" placeholder="gsk_..." autocomplete="off" spellcheck="false">
-      <button type="button" id="toggleKey">Mostrar</button>
+    <h2>Módulos</h2>
+    <div class=module>
+      <label class=inline><input type=checkbox id=mod-crm> CRM</label>
+      <p class=hint>Funil em Kanban com os clientes da lista, disparo pelo CRM e agente de IA. Desligado, o menu e as páginas do CRM ficam ocultos.</p>
     </div>
-    <p class="hint">Crie em <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>. Fica salva só neste navegador.</p>
+    <div class=module>
+      <label class=inline><input type=checkbox id=mod-agenda> Agendamento</label>
+      <p class=hint>Agenda de compromissos e follow-ups vinculados aos clientes, com lembretes. Desligado, o menu e as páginas da agenda ficam ocultos.</p>
+    </div>
+    <p class=hint>A Lista de Clientes e as Campanhas ficam sempre ativas. <span class=status id=modStatus></span></p>
+  </section>
 
-    <label for="model">Modelo</label>
-    <input type="text" id="model" list="models" placeholder="llama-3.3-70b-versatile" spellcheck="false">
-    <datalist id="models">
-      <option value="llama-3.3-70b-versatile">
-      <option value="llama-3.1-8b-instant">
+  <section>
+    <h2>Variações com IA</h2>
+    <p class=hint style="margin:0 0 14px">Cada contato recebe uma paráfrase diferente da mensagem, gerada pelo Groq.</p>
+    <label class=inline><input type=checkbox id=enabled> Ativar paráfrase nos disparos</label>
+    <p class=hint>A IA reescreve o texto (e a legenda de mídias) antes de cada envio. As variáveis como <code>{{nome}}</code> e os links são preservados. Se a IA falhar, demorar mais de 20 s ou alterar uma variável ou link, o texto original é enviado.</p>
+
+    <label for=apiKey>Chave da API do Groq</label>
+    <div class=row>
+      <input type=password id=apiKey placeholder=gsk_... autocomplete=off spellcheck=false>
+      <button type=button id=toggleKey>Mostrar</button>
+    </div>
+    <p class=hint>Crie em <a href=https://console.groq.com/keys target=_blank rel=noopener>console.groq.com/keys</a>. Fica salva só neste navegador.</p>
+
+    <label for=model>Modelo</label>
+    <input type=text id=model list=models placeholder=llama-3.3-70b-versatile spellcheck=false>
+    <datalist id=models>
+      <option value=llama-3.3-70b-versatile>
+      <option value=llama-3.1-8b-instant>
     </datalist>
-    <p class="hint">A lista de sugestões é atualizada com os modelos da sua conta ao salvar ou testar.</p>
+    <p class=hint>A lista de sugestões é atualizada com os modelos da sua conta ao salvar ou testar.</p>
 
-    <label for="temperature">Criatividade: <span id="tempValue"></span></label>
-    <input type="range" id="temperature" min="0.3" max="1.5" step="0.1">
-    <p class="hint">Valores maiores geram textos mais diferentes entre si, mas aumentam o risco de a IA mudar o sentido.</p>
+    <label for=temperature>Criatividade: <span id=tempValue></span></label>
+    <input type=range id=temperature min=0.3 max=1.5 step=0.1>
+    <p class=hint>Valores maiores geram textos mais diferentes entre si, mas aumentam o risco de a IA mudar o sentido.</p>
 
-    <label for="instructions">Instruções adicionais (opcional)</label>
-    <textarea id="instructions" placeholder="Ex.: use linguagem informal; não use emojis; trate o cliente por você."></textarea>
+    <label for=instructions>Instruções adicionais (opcional)</label>
+    <textarea id=instructions placeholder="Ex.: use linguagem informal; não use emojis; trate o cliente por você."></textarea>
 
-    <div class="actions">
-      <button type="button" class="primary" id="save">Salvar</button>
-      <span class="status" id="saveStatus"></span>
+    <div class=actions>
+      <button type=button class=primary id=save>Salvar</button>
+      <span class=status id=saveStatus></span>
     </div>
   </section>
 
   <section>
     <h2>Testar</h2>
-    <label for="sample">Mensagem de exemplo</label>
-    <textarea id="sample">{{saudacao}}, {{primeiro_nome|tudo bem}}! Temos uma condição especial para você esta semana. Posso te mandar os detalhes?</textarea>
-    <div class="actions">
-      <button type="button" id="test">Gerar variação</button>
-      <span class="status" id="testStatus"></span>
+    <label for=sample>Mensagem de exemplo</label>
+    <textarea id=sample>{{saudacao}}, {{primeiro_nome|tudo bem}}! Temos uma condição especial para você esta semana. Posso te mandar os detalhes?</textarea>
+    <div class=actions>
+      <button type=button id=test>Gerar variação</button>
+      <span class=status id=testStatus></span>
     </div>
-    <pre id="testOut"></pre>
+    <pre id=testOut></pre>
   </section>
 </main>
-<script src="js/ia-options.js"></script>
-</body>
-</html>
+<script src=js/modules-options.js></script>
+<script src=js/ia-options.js></script>
+
+
+</body></html>
