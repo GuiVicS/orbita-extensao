@@ -4,6 +4,14 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.4.0
+
+- **Disparo pelo CRM**: selecione cards (ou a coluna inteira) e "Disparar mensagem" — cria uma campanha só com esses clientes para revisar e iniciar, com o mesmo ritmo, pausas e limite diário.
+- **Mensagens salvas** reutilizáveis nos disparos.
+- Card do cliente: **Enviar mensagem** (avulsa, registrada no histórico) e **Abrir conversa no WhatsApp** na aba já aberta.
+- Envios de campanha aparecem como "Mensagem" no histórico do cliente no CRM.
+- Campanhas: **filtro de público sempre visível** e opção **"Todos os contatos (todas as listas)"**.
+
 ## Novidades da 1.3.0
 
 - **Módulo Agenda** (desligado por padrão): compromissos e follow-ups sempre vinculados a um cliente, visões Lista / Semana / Mês e lembrete por notificação do sistema. Integrado ao CRM ("Agendar" e próximos compromissos no card do cliente).
