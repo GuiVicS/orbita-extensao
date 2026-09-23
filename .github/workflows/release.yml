@@ -1,0 +1,51 @@
+# Copie este arquivo para: .github/workflows/release.yml no repositório orbita-extensao
+#
+# O que ele faz a cada push na branch main:
+# 1. Lê a versão do manifest.json
+# 2. Zipa a extensão (o repositório já é a extensão pronta, sem etapa de build)
+# 3. Cria uma Release no GitHub com esse zip anexado
+#
+# IMPORTANTE: pra sair uma release nova, é preciso subir a versão no
+# manifest.json (ex: de "1.0.0" pra "1.0.1") antes de dar push. Se a versão
+# não mudou, o workflow não publica nada (evita recriar a mesma versão).
+
+name: Release Extension
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version from manifest
+        id: version
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag v$VERSION ja existe - suba a versao no manifest.json para publicar."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Zip extension
+        if: steps.version.outputs.exists == 'false'
+        run: zip -r orbita-extensao.zip . -x '.git/*' '.github/*' 'patches/*' '.gitignore' '.gitattributes' 'README.md'
+
+      - name: Create Release
+        if: steps.version.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          files: orbita-extensao.zip
+          generate_release_notes: true
