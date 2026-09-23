@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Órbita — Campanhas para WhatsApp Web",
   "short_name": "Órbita",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Gerencie e dispare campanhas pelo seu WhatsApp Web já conectado. Local-first: nada sai do seu computador.",
   "minimum_chrome_version": "116",
   "icons": {

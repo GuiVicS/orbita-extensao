@@ -4,9 +4,15 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.6.0
+
+- **Provedores de IA configuráveis**: Groq, OpenAI, Anthropic (Claude), Gemini, OpenRouter e servidores compatíveis com OpenAI (Ollama, LM Studio ou servidor próprio).
+- **Transcrição de áudio**: configuração para Whisper via Groq ou OpenAI.
+- **Fallback de modelo**: quando o modelo escolhido é aposentado, a Órbita escolhe outro modelo disponível.
+
 ## Novidades da 1.5.0
 
-- **Assistente de IA no CRM**: no card do cliente, "Sugerir próxima ação" traz resumo, próxima ação e mensagem sugerida (usa a chave do Groq; o contexto do cliente e trechos da conversa são enviados ao Groq).
+- **Assistente de IA no CRM**: no card do cliente, "Sugerir próxima ação" traz resumo, próxima ação e mensagem sugerida (usa o provedor configurado; o contexto do cliente e trechos da conversa são enviados para ele).
 - **Resposta automática (modo seguro)**, desligada por padrão: liga geral + por cliente, só texto, horário/dias, espera de 1–3 min, máximo por cliente/dia, palavras de alerta, bloqueio de preços/percentuais inventados, "precisa de atenção" com notificação e desligamento automático quando você responde pelo WhatsApp. Aumenta o risco de bloqueio do número — use com poucos clientes.
 
 ## Novidades da 1.4.0
@@ -47,9 +53,9 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 | `4-ui-defaults.json` | `js/dashboard.js`, `js/popup.js` | Padrão da UI com `batchSize: 0` | Padrão `batchSize: 25`, `batchPauseMin: 10` |
 | `5-ia-groq.json` | `js/service_worker.js` | Todos os contatos recebiam o mesmo texto | Antes de cada envio o texto (ou legenda) é parafraseado pela API do Groq. Configuração em `chrome.storage.local["orbita:ai"]`, editada em `options.html` / `js/ia-options.js`. Qualquer falha, demora acima de 20 s ou alteração em `{{variáveis}}`/links → envia o texto original |
 
-## Variações com IA (Groq)
+## Variações com IA
 
-`chrome://extensions` → Órbita → **Detalhes** → **Opções da extensão** (ou clique com o botão direito no ícone → **Opções**). Informe a chave de [console.groq.com/keys](https://console.groq.com/keys), ative e use **Gerar variação** para testar. Com a opção ligada, o texto de cada mensagem é enviado à API do Groq antes do disparo.
+`chrome://extensions` → Órbita → **Detalhes** → **Opções da extensão** (ou clique com o botão direito no ícone → **Opções**). Escolha o provedor, informe a chave ou o endereço do servidor compatível com OpenAI, ative e use **Gerar variação** para testar. As chaves ficam salvas somente neste navegador. Com a opção ligada, o texto de cada mensagem é enviado ao provedor configurado antes do disparo.
 
 ### Reaplicar num build novo
 
