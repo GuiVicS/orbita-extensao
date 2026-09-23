@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Órbita — Campanhas para WhatsApp Web",
   "short_name": "Órbita",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Gerencie e dispare campanhas pelo seu WhatsApp Web já conectado. Local-first: nada sai do seu computador.",
   "minimum_chrome_version": "116",
   "icons": {
@@ -19,6 +19,10 @@
       "32": "icons/icon32.png",
       "48": "icons/icon48.png"
     }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
   },
   "background": {
     "service_worker": "js/service_worker.js"
@@ -37,7 +41,7 @@
     }
   ],
   "permissions": ["storage", "unlimitedStorage", "alarms", "tabs", "scripting"],
-  "host_permissions": ["https://web.whatsapp.com/*"],
+  "host_permissions": ["https://web.whatsapp.com/*", "https://api.groq.com/*"],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
   }
