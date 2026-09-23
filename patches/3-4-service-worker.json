@@ -1,0 +1,22 @@
+[
+  {
+    "before": "let c,d=\"noWhatsapp\"===o?1e3*z(2,4):1e3*z(r.pacing.minDelaySec,r.pacing.maxDelaySec);",
+    "after": "let c,d=1e3*z(r.pacing.minDelaySec,r.pacing.maxDelaySec);"
+  },
+  {
+    "before": "batchSize:0,batchPauseMin:5",
+    "after": "batchSize:25,batchPauseMin:10"
+  },
+  {
+    "before": "verifyNumbers:!0,acceptedTerms:!1}",
+    "after": "verifyNumbers:!0,acceptedTerms:!1,dailyLimit:250}"
+  },
+  {
+    "before": "const i=await $.nextPending(t);",
+    "after": "const __orbDay=await(async()=>{const k=\"orbita:dailySent\",r=(await chrome.storage.local.get(k))[k],d=(new Date).toLocaleDateString(\"sv\");return r&&r.day===d?r.count:0})();if(a.dailyLimit>0&&__orbDay>=a.dailyLimit){const n=new Date;n.setHours(24,0,30,0);const r=n.getTime();await M.patch(t,{nextSendAt:r,statusReason:`Limite diário de ${a.dailyLimit} envios atingido. Retoma automaticamente amanhã.`}),await j.add(t,\"info\",`Limite diário de ${a.dailyLimit} envios atingido. A campanha retoma amanhã.`),await rt(t,r);break}const i=await $.nextPending(t);"
+  },
+  {
+    "before": "i.phone),o=\"sent\"}}catch(a){",
+    "after": "i.phone),o=\"sent\",await(async()=>{const k=\"orbita:dailySent\",r=(await chrome.storage.local.get(k))[k],d=(new Date).toLocaleDateString(\"sv\");await chrome.storage.local.set({[k]:{day:d,count:(r&&r.day===d?r.count:0)+1}})})().catch(()=>{})}}catch(a){"
+  }
+]

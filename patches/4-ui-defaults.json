@@ -1,0 +1,6 @@
+[
+  {
+    "before": "batchSize:0,batchPauseMin:5",
+    "after": "batchSize:25,batchPauseMin:10"
+  }
+]

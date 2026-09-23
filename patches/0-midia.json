@@ -1,0 +1,6 @@
+[
+  {
+    "before": "try{return await w(t.raw,s)}catch(i){if(!(i instanceof _))throw i;const a=n()?.chat;",
+    "after": "{const i=new Error(\"WPP.chat.sendFileMessage indisponível.\");const a=n()?.chat;"
+  }
+]

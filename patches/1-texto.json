@@ -1,0 +1,6 @@
+[
+  {
+    "before": "try{return await w(r.raw,{body:t,type:\"chat\",subtype:null,urlText:null,urlNumber:null})}catch(e){if(!(e instanceof _))throw e;const o=n()?.chat;if(\"function\"!=typeof o?.sendTextMessage)throw e;return O(await o.sendTextMessage(r.high,t,{createChat:!0,waitForAck:!1}))}",
+    "after": "const o=n()?.chat;if(\"function\"==typeof o?.sendTextMessage)return O(await o.sendTextMessage(r.high,t,{createChat:!0,waitForAck:!1}));return await w(r.raw,{body:t,type:\"chat\",subtype:null,urlText:null,urlNumber:null})"
+  }
+]

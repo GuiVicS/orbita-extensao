@@ -1,0 +1,14 @@
+[
+  {
+    "before": "case\"resolve\":return async function(e){await f();const t=await b(e);return{exists:t.exists,wid:t.pn||t.lid}}(e.phone);",
+    "after": "case\"resolve\":return async function(e){await f();const c=P.get(e);if(c&&Date.now()-c.at<6e5)return{exists:!0,wid:c.high};const t=await b(e);t.exists&&P.set(e,{raw:t.lid||t.pn||m(e),high:t.pn||m(e),at:Date.now()});return{exists:t.exists,wid:t.pn||t.lid}}(e.phone);"
+  },
+  {
+    "before": "if(\"function\"!=typeof o)return{exists:!0,pn:t};for(const e of(e=>{",
+    "after": "if(\"function\"!=typeof o)return{exists:!0,pn:t};const __orbV=(e=>{"
+  },
+  {
+    "before": "[...new Set(n)]})(t))try{const t=await o.call(r,",
+    "after": "[...new Set(n)]})(t);for(const e of __orbV)try{if(n()?.chat?.get?.(`${e}@c.us`))return{exists:!0,pn:`${e}@c.us`}}catch{}for(const e of __orbV)try{const t=await o.call(r,"
+  }
+]

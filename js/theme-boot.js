@@ -1,0 +1,1 @@
+!function(){try{var e=localStorage.getItem("orbita-theme")||"system",t="dark"===e||"system"===e&&window.matchMedia("(prefers-color-scheme: dark)").matches;document.documentElement.classList.toggle("dark",t)}catch(e){}}();

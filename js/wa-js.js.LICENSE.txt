@@ -1,0 +1,3 @@
+/*! For license information please see wppconnect-wa.js.LICENSE.txt */
+
+/*! wppconnect-team/wa-js v4.6.0 */
