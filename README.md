@@ -4,6 +4,14 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.3.0
+
+- **Módulo Agenda** (desligado por padrão): compromissos e follow-ups sempre vinculados a um cliente, visões Lista / Semana / Mês e lembrete por notificação do sistema. Integrado ao CRM ("Agendar" e próximos compromissos no card do cliente).
+- **Filtro de público nas campanhas**: etapa do funil, tags, variáveis da lista, campanhas anteriores, última interação e agenda, com contagem ao vivo.
+- **Tags** nos clientes do CRM.
+- **Importar contatos do WhatsApp**: aba "Do WhatsApp" em Contatos → Importar (agenda sincronizada e conversas, sem consultar o servidor).
+- Nova permissão: `notifications` (lembretes da Agenda). Banco local atualizado para a versão 3; dados existentes são mantidos.
+
 ## Novidades da 1.2.0
 
 - **Módulo CRM** (desligado por padrão): funil de vendas em Kanban com os clientes das listas de contatos — colunas editáveis, arrastar e soltar, histórico e notas por cliente. Ative em **Opções da extensão → Módulos**.
