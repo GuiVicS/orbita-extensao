@@ -4,6 +4,11 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.5.0
+
+- **Assistente de IA no CRM**: no card do cliente, "Sugerir próxima ação" traz resumo, próxima ação e mensagem sugerida (usa a chave do Groq; o contexto do cliente e trechos da conversa são enviados ao Groq).
+- **Resposta automática (modo seguro)**, desligada por padrão: liga geral + por cliente, só texto, horário/dias, espera de 1–3 min, máximo por cliente/dia, palavras de alerta, bloqueio de preços/percentuais inventados, "precisa de atenção" com notificação e desligamento automático quando você responde pelo WhatsApp. Aumenta o risco de bloqueio do número — use com poucos clientes.
+
 ## Novidades da 1.4.0
 
 - **Disparo pelo CRM**: selecione cards (ou a coluna inteira) e "Disparar mensagem" — cria uma campanha só com esses clientes para revisar e iniciar, com o mesmo ritmo, pausas e limite diário.
