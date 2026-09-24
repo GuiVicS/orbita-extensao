@@ -228,7 +228,11 @@
 
   let lastStatus = "";
   function emitStatus(force = false) {
-    const s = { ready: ready() };
+    let me;
+    try {
+      me = ready() ? ser(WPP()?.conn?.getMyUserId?.()) || undefined : undefined;
+    } catch {}
+    const s = { ready: ready(), me }; // "me" separa as conversas de contas diferentes
     const key = JSON.stringify(s);
     if (force || key !== lastStatus) {
       lastStatus = key;

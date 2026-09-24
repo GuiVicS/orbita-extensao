@@ -4,6 +4,77 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.8.0
+
+### Conversas: chat com tradução bilateral (texto e áudio)
+
+Nova página **Conversas** no painel: converse com seus contatos do WhatsApp pelo painel da Órbita, lendo e escrevendo em português, com tradução automática para o idioma do contato.
+
+- **Chat próprio**: lista de conversas (busca, não lidas, clientes do CRM), mensagens em tempo real, confirmações de leitura, mensagens apagadas/editadas, histórico ao rolar e painel do cliente (etapa, tags, notas, compromissos). Funciona enquanto o WhatsApp Web estiver aberto numa aba.
+- **Tradução por conversa** (botão *Traduzir*): as recebidas aparecem em português (com “mostrar original”); você escreve em português e vê uma **prévia** com o texto que será enviado e a tradução de volta antes de clicar em Enviar. Idioma do contato automático (detectado) ou fixo, tom formal/informal, glossário.
+- **Falha segura**: com a tradução ligada, a extensão só envia um texto idêntico a uma tradução que ela gerou e você aprovou. Se a IA falhar, demorar ou alterar links/números/variáveis, **nada é enviado**.
+- **Áudio recebido**: player no balão, transcrição (Whisper via Groq ou OpenAI) e tradução da transcrição. Só processa com a conversa aberta; áudios longos (padrão > 3 min) só com clique.
+- **Áudio enviado com voz gerada** (Fish Audio): grave em português (vira texto para revisar) ou digite, confira a tradução, gere a voz, **ouça** e envie como mensagem de voz gravada. Selo “Voz gerada por IA” e aviso opcional ao contato.
+- **Menu lateral recolhível** (botão ou Ctrl+B).
+- O backup passa a incluir conversas e mensagens (sem os caches de mídia/tradução e sem chaves de API).
+
+#### Como configurar
+
+1. **Opções da extensão → Variações com IA**: escolha o provedor e informe a chave (é o mesmo provedor usado na tradução). Para transcrever áudios, é preciso uma chave da **Groq** ou da **OpenAI**.
+2. **Opções → Conversas: tradução e voz**: seu idioma, idioma padrão do contato, tom, glossário e, para voz, a chave do **Fish Audio** e a voz (crie a sua em “Criar a minha voz”: grave 10–30 s, sem ruído).
+3. No painel, abra **Conversas** com o WhatsApp Web aberto numa aba, escolha a conversa e clique em **Traduzir**.
+
+#### Privacidade e riscos
+
+- Com a tradução ligada, o texto das mensagens (e algumas anteriores, como contexto; configurável, 0 desliga) é enviado ao provedor de IA configurado. Áudios abertos vão ao Whisper (Groq/OpenAI); textos para voz, ao Fish Audio. Um aviso aparece na primeira ativação.
+- Conversas, traduções e áudios ficam só neste navegador (IndexedDB `orbita-chat`). O conteúdo das mensagens não é registrado em logs. As chaves ficam em `chrome.storage.local` e **não entram no backup**.
+- **Voz clonada**: use apenas a sua voz ou uma com autorização expressa. Recomendamos ligar o aviso “(áudio com voz gerada por IA)”.
+- Automatizar o WhatsApp Web pode violar os Termos do WhatsApp e gerar risco para o número. As Conversas são 1:1 e conduzidas por você, mas o risco existe.
+
+#### Limitações conhecidas
+
+- Só conversas 1:1 (grupos ficam de fora), texto e áudio. Figurinhas, fotos, vídeos, enquetes etc. aparecem como “📎 Mídia” com a legenda.
+- A aba do WhatsApp Web precisa estar aberta para receber e enviar (com ela fechada, o painel mostra o que já estava salvo).
+- Contatos cujo número o WhatsApp esconde (IDs `@lid`) aparecem, mas não são ligados ao CRM.
+- Ler uma conversa no painel não marca como lida no celular.
+- Um mesmo contato que fale com duas contas suas aparece na conta usada por último.
+
+#### Como funciona (para quem vai mexer no código)
+
+```
+aba do WhatsApp (js/chat-page.js, WA-JS) ⇄ js/chat-content.js ⇄ porta "orbita-chat"
+      ⇄ service worker: js/chat-sync.js (+ chat-translate.js, chat-transcribe.js, chat-voice.js)
+      ⇄ banco orbita-chat (js/chat-common.js)
+      ⇄ painel: conversas.html / js/conversas.js (canal "orbita:chat" + porta "orbita-chat-ui")
+```
+
+- O painel nunca fala direto com a aba do WhatsApp; tudo passa pelo service worker (`js/background.js` carrega o bundle original e os módulos novos).
+- Banco próprio `orbita-chat` em vez de subir o `orbita` para v4: a migração do `orbita` está duplicada em dois bundles minificados, e mudar só um quebraria o outro.
+- Motor de tradução separado da interface (`js/chat-translate.js`), reutilizável numa futura sobreposição no WhatsApp Web.
+- Menu e rota no painel: `patches/7-conversas.json`.
+
+#### Testes
+
+```sh
+node --test tests/*.test.mjs            # unitários (motor de tradução, transcrição, voz, utilidades)
+npm i -D playwright && npx playwright install chromium
+node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options
+```
+
+Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web simulado (`tests/e2e/fake-whatsapp.html`) e provedores de IA/voz simulados — nenhuma chave real é usada.
+
+**Roteiro de teste manual (com WhatsApp e chaves reais)** — ainda precisa ser executado:
+
+- [ ] Instalação existente atualizada para 1.8.0: campanhas, CRM, agenda e respostas rápidas continuam normais.
+- [ ] Abrir conversa de um contato do CRM; receber texto em inglês; ver em português; alternar o original.
+- [ ] Enviar em português; conferir prévia, retro-tradução e o que chegou no celular.
+- [ ] Desligar a tradução numa conversa em português e confirmar que nada é traduzido.
+- [ ] Derrubar a internet no meio do envio: nada é enviado e o erro é claro.
+- [ ] Receber áudio: transcrição, tradução e player.
+- [ ] Enviar áudio gerado: chega como mensagem de voz, toca no celular, dura o esperado.
+- [ ] Fechar e reabrir a aba do WhatsApp com o painel aberto: aviso e retomada sem duplicatas.
+- [ ] Backup e restauração: mensagens voltam; chaves de API não são exportadas.
+
 ## Novidades da 1.7.1
 
 - Respostas rápidas: a barra agora se adapta ao layout do WhatsApp Web (rodapé em fluxo, absoluto ou em grid) e fica sempre logo abaixo do campo de mensagem — antes podia aparecer embaixo do cabeçalho da conversa.
@@ -65,6 +136,7 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 | `2-consultas.json` | `js/wa-js.js` | Até 4 consultas `queryExists` por contato (op `resolve` sem cache + `sendText` de novo, ×2 variantes do 9º dígito) | Checa chat local antes de consultar o servidor; `resolve` usa o mesmo cache (10 min) do envio |
 | `3-4-service-worker.json` | `js/service_worker.js` | Número sem WhatsApp reduzia o intervalo para 2–4 s; sem pausa por lote; sem limite diário | Intervalo normal sempre; padrão pausa de 10 min a cada 25 envios; limite diário global de 250 contatos (`settings.dailyLimit`, contador em `chrome.storage.local["orbita:dailySent"]`), retomando no dia seguinte |
 | `4-ui-defaults.json` | `js/dashboard.js`, `js/popup.js` | Padrão da UI com `batchSize: 0` | Padrão `batchSize: 25`, `batchPauseMin: 10` |
+| `7-conversas.json` | `js/dashboard.js` | Sem chat no painel | Item “Conversas” no menu e rota `#/conversas` (página `conversas.html` em iframe) |
 | `6-respostas-rapidas-backup.json` | `js/dashboard.js` | Sem página de respostas rápidas nem backup | Item “Respostas rápidas” no menu (página `quick-replies.html` em iframe) e botões “Baixar backup” / “Restaurar backup” em Configurações (`js/backup.js`) |
 | `5-ia-groq.json` | `js/service_worker.js` | Todos os contatos recebiam o mesmo texto | Antes de cada envio o texto (ou legenda) é parafraseado pela API do Groq. Configuração em `chrome.storage.local["orbita:ai"]`, editada em `options.html` / `js/ia-options.js`. Qualquer falha, demora acima de 20 s ou alteração em `{{variáveis}}`/links → envia o texto original |
 
@@ -83,6 +155,7 @@ node patches/patch.mjs js/dashboard.js patches/4-ui-defaults.json
 node patches/patch.mjs js/popup.js patches/4-ui-defaults.json
 node patches/patch.mjs js/service_worker.js patches/5-ia-groq.json
 node patches/patch.mjs js/dashboard.js patches/6-respostas-rapidas-backup.json
+node patches/patch.mjs js/dashboard.js patches/7-conversas.json
 ```
 
 `options.html`, `js/ia-options.js` e as entradas `options_ui` / `https://api.groq.com/*` do `manifest.json` não são patches: copie-os para o build novo.

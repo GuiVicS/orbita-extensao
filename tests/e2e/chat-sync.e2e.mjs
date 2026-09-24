@@ -76,6 +76,14 @@ const ids = open.messages.map((m) => m.id);
 console.log("após reabrir:", open.messages.length, "mensagens (antes:", before, ")");
 assert.equal(new Set(ids).size, ids.length, "sem duplicatas");
 assert.ok(open.messages.some((m) => m.text === "Missed while offline"), "lacuna preenchida");
+// troca de conta: outra conta do WhatsApp só mostra as conversas dela
+await wa2.evaluate(() => { window.WPP.conn.getMyUserId = () => ({ _serialized: "5521888887777@c.us" }); });
+await waitFor(async () => (await call(dash, "chat.list")).length === 0, 8000).catch(() => {});
+const other = await call(dash, "chat.list");
+console.log("conversas na outra conta (antes de sincronizar):", other.length);
+assert.equal(other.length, 0);
+await wa2.evaluate(() => { window.WPP.conn.getMyUserId = () => ({ _serialized: "5511000000000@c.us" }); });
+await waitFor(async () => (await call(dash, "chat.list")).length === 3, 8000);
 // aba do WhatsApp fechada → status e aviso
 await wa2.close();
 await waitFor(async () => !(await call(dash, "wa.status")).connected);

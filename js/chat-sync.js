@@ -20,6 +20,10 @@
   const pending = new Map(); // reqId → { resolve, reject, timer, tabId }
   const uiPorts = new Map(); // porta do painel → chatId aberto nela (ou null)
   let status = { connected: false, ready: false };
+  // Conta do WhatsApp conectada (ex.: "5511…@c.us"). Guardada no banco para a
+  // lista continuar certa com a aba fechada ou o service worker reiniciado.
+  let account = null;
+  const accountReady = C.getMeta("account").then((a) => (account = account || a || null)).catch(() => {});
 
   function broadcast(event, data) {
     for (const port of uiPorts.keys()) {
@@ -99,6 +103,12 @@
       case "status": {
         const was = entry.ready;
         entry.ready = Boolean(d.ready);
+        if (d.me && d.me !== account) {
+          // outra conta do WhatsApp: a lista passa a mostrar só as conversas dela
+          account = d.me;
+          await C.setMeta("account", account);
+          broadcast(C.EVENTS.CHAT_UPDATED, { all: true });
+        }
         refreshStatus();
         if (!was && entry.ready) scheduleResync();
         return;
@@ -326,6 +336,8 @@
       if (info.name) next.name = info.name;
       if (info.pushname) next.pushname = info.pushname;
       if (info.phone) next.phone = info.phone;
+      // de qual conta do WhatsApp é esta conversa (dados ao vivo vêm sempre da conta conectada)
+      if (account) next.account = account;
       if (lastMsg && lastMsg.ts >= (next.lastMessageAt || 0)) {
         next.lastMessageAt = lastMsg.ts;
         next.lastPreview = C.previewOf(lastMsg);
@@ -390,11 +402,12 @@
         return status;
 
       case C.OPS.LIST:
-        return C.listChats();
+        await accountReady;
+        return (await C.listChats()).filter((c) => !account || !c.account || c.account === account);
 
       case C.OPS.REFRESH:
         await resync();
-        return C.listChats();
+        return (await C.listChats()).filter((c) => !account || !c.account || c.account === account);
 
       case C.OPS.OPEN: {
         const chatId = String(req.chatId || "");
