@@ -1,0 +1,14 @@
+[
+  {
+    "before": "{path:\"/contatos\",label:\"Contatos\",icon:ws},",
+    "after": "{path:\"/contatos\",label:\"Contatos\",icon:ws},{path:\"/respostas-rapidas\",label:\"Respostas rápidas\",icon:bs(\"zap\",[[\"path\",{d:\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\",key:\"orbitaqr\"}]])},"
+  },
+  {
+    "before": ":\"/configuracoes\"===e?(0,i().jsx)(yT,{}):",
+    "after": ":\"/respostas-rapidas\"===e?(0,i().jsx)(\"iframe\",{src:\"quick-replies.html?embed=1&\"+(window.location.hash.split(\"?\")[1]||\"\"),title:\"Respostas rápidas\",allow:\"microphone\",style:{display:\"block\",width:\"100%\",height:\"calc(100vh - 4rem)\",border:0,margin:\"-2rem 0\",background:\"transparent\"}}):\"/configuracoes\"===e?(0,i().jsx)(yT,{}):"
+  },
+  {
+    "before": "(0,i().jsx)(bT,{}),\" Limpar mídias órfãs\"]})",
+    "after": "(0,i().jsx)(bT,{}),\" Limpar mídias órfãs\"]}),(0,i().jsxs)(Js,{variant:\"outline\",onClick:async()=>{try{const e=await globalThis.OrbitaBackup.download();T.success(`Backup baixado (${os(e.size)}). Guarde o arquivo em um lugar seguro.`)}catch(e){T.error(`Falha ao gerar o backup: ${e instanceof Error?e.message:String(e)}`)}},children:[(0,i().jsx)($m,{}),\" Baixar backup\"]}),(0,i().jsxs)(Js,{variant:\"outline\",onClick:async()=>{try{const e=await globalThis.OrbitaBackup.restore();e&&(T.success(\"Backup restaurado. Recarregando o painel…\"),setTimeout(()=>location.reload(),1200))}catch(e){T.error(`Falha ao restaurar: ${e instanceof Error?e.message:String(e)}`)}},children:[(0,i().jsx)(Mo,{}),\" Restaurar backup\"]})"
+  }
+]

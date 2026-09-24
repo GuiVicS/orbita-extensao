@@ -4,6 +4,16 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.7.0
+
+- **Respostas rápidas no WhatsApp Web**: barra logo abaixo do campo de mensagem com botões de respostas prontas, filtro por categoria, busca e prévia ao passar o mouse (botão direito também abre a prévia).
+  - Cada resposta é uma **sequência de mensagens**: texto, **áudio enviado como gravado na hora** (mensagem de voz com forma de onda; o arquivo é convertido para OGG/Opus), áudio como arquivo, foto (HD / visualização única), vídeo (GIF, **vídeo redondo**, visualização única), documento, figurinha, localização, contato e enquete — com espera configurável entre elas.
+  - **“Digitando…” / “gravando áudio…”** antes de cada envio (opcional), variáveis `{{saudacao}}`, `{{nome}}`, `{{primeiro_nome}}`, `{{telefone}}`, `{{data}}`, `{{hora}}`, `{{dia_semana}}`, `{{meu_nome}}` (com valor padrão: `{{primeiro_nome|tudo bem}}`).
+  - Atalhos: digite **/atalho** no campo (Enter/Tab envia, Shift+Enter põe o texto no campo), **Alt+1…9** e Shift+clique para colocar o texto no campo sem enviar.
+  - Gerenciadas no painel em **Respostas rápidas**: editor com prévia estilo WhatsApp, gravação pelo microfone, arrastar e soltar arquivos, colar imagens, categorias com cores, favoritas, contagem de uso, reordenar arrastando, importar/exportar e preferências.
+- **Backup em Configurações**: “Baixar backup” gera um arquivo com listas, contatos, campanhas, mídias, histórico, CRM, agenda, preferências e respostas rápidas; “Restaurar backup” substitui os dados atuais pelos do arquivo. As chaves de API da IA não entram no backup (e as atuais são mantidas ao restaurar).
+- O service worker agora é `js/background.js`, que carrega o `js/service_worker.js` original e acrescenta os handlers novos.
+
 ## Novidades da 1.6.0
 
 - **Provedores de IA configuráveis**: Groq, OpenAI, Anthropic (Claude), Gemini, OpenRouter e servidores compatíveis com OpenAI (Ollama, LM Studio ou servidor próprio).
@@ -51,6 +61,7 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 | `2-consultas.json` | `js/wa-js.js` | Até 4 consultas `queryExists` por contato (op `resolve` sem cache + `sendText` de novo, ×2 variantes do 9º dígito) | Checa chat local antes de consultar o servidor; `resolve` usa o mesmo cache (10 min) do envio |
 | `3-4-service-worker.json` | `js/service_worker.js` | Número sem WhatsApp reduzia o intervalo para 2–4 s; sem pausa por lote; sem limite diário | Intervalo normal sempre; padrão pausa de 10 min a cada 25 envios; limite diário global de 250 contatos (`settings.dailyLimit`, contador em `chrome.storage.local["orbita:dailySent"]`), retomando no dia seguinte |
 | `4-ui-defaults.json` | `js/dashboard.js`, `js/popup.js` | Padrão da UI com `batchSize: 0` | Padrão `batchSize: 25`, `batchPauseMin: 10` |
+| `6-respostas-rapidas-backup.json` | `js/dashboard.js` | Sem página de respostas rápidas nem backup | Item “Respostas rápidas” no menu (página `quick-replies.html` em iframe) e botões “Baixar backup” / “Restaurar backup” em Configurações (`js/backup.js`) |
 | `5-ia-groq.json` | `js/service_worker.js` | Todos os contatos recebiam o mesmo texto | Antes de cada envio o texto (ou legenda) é parafraseado pela API do Groq. Configuração em `chrome.storage.local["orbita:ai"]`, editada em `options.html` / `js/ia-options.js`. Qualquer falha, demora acima de 20 s ou alteração em `{{variáveis}}`/links → envia o texto original |
 
 ## Variações com IA
@@ -67,6 +78,7 @@ node patches/patch.mjs js/service_worker.js patches/3-4-service-worker.json
 node patches/patch.mjs js/dashboard.js patches/4-ui-defaults.json
 node patches/patch.mjs js/popup.js patches/4-ui-defaults.json
 node patches/patch.mjs js/service_worker.js patches/5-ia-groq.json
+node patches/patch.mjs js/dashboard.js patches/6-respostas-rapidas-backup.json
 ```
 
 `options.html`, `js/ia-options.js` e as entradas `options_ui` / `https://api.groq.com/*` do `manifest.json` não são patches: copie-os para o build novo.
