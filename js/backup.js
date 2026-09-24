@@ -9,7 +9,7 @@
   // Banco das Conversas: entram conversas e mensagens; caches (mídia baixada,
   // traduções) ficam de fora porque podem ser refeitos e crescem muito.
   const CHAT_DB = "orbita-chat";
-  const CHAT_STORES = ["chats", "messages", "meta"];
+  const CHAT_STORES = ["chats", "messages", "meta", "stickers"];
 
   const req = (r) => new Promise((resolve, reject) => ((r.onsuccess = () => resolve(r.result)), (r.onerror = () => reject(r.error))));
   // Abre um banco existente sem nunca criá-lo: indexedDB.open sem versão criaria

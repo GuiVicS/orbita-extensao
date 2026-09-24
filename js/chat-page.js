@@ -232,7 +232,7 @@
         if (parts.length !== cmd.chunks || [...parts].some((p) => !p)) throw new Error("O arquivo não chegou inteiro ao WhatsApp Web. Tente de novo.");
         const file = new File(parts, cmd.filename || "arquivo", { type: cmd.mime || "application/octet-stream" });
         const o = { createChat: true, waitForAck: false, type: cmd.type, filename: cmd.filename, mimetype: file.type };
-        if (cmd.caption && cmd.type !== "audio") o.caption = cmd.caption;
+        if (cmd.caption && cmd.type !== "audio" && cmd.type !== "sticker") o.caption = cmd.caption;
         if (cmd.type === "audio") o.isPtt = false;
         const res = await chat.sendFileMessage(cmd.chatId, file, o);
         const result = await Promise.race([res?.sendMsgResult, new Promise((r) => setTimeout(() => r({ timeout: true }), 120000))]).catch(() => null);

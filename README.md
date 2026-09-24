@@ -4,6 +4,15 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.13.0
+
+- **Conversas: emojis e figurinhas.** Botão **😊** ao lado do campo de mensagem abre um painel como o do WhatsApp:
+  - **Emojis**: busca em português (“coração”, “polegar”, “foguete”; acentos opcionais, Enter insere o primeiro), categorias com rolagem e destaque da atual, **recentes**, **tom de pele** e prévia do nome. O painel fica aberto enquanto você escolhe e o cursor volta ao campo. Só aparecem emojis que o seu computador sabe desenhar, e as **bandeiras** funcionam também no Windows.
+  - **Digite `:` e parte do nome** (ex.: `:foguet`) para sugestões na hora: Tab ou Enter escolhe, setas navegam, Esc fecha.
+  - **Figurinhas**: as que chegam nas conversas entram sozinhas na sua coleção; **favoritas** (estrela), **criar figurinha** a partir de qualquer imagem (vira 512×512 com fundo transparente) e remover. Um clique envia como figurinha, e ela aparece na conversa na hora.
+  - Mensagens só com 1 a 3 emojis aparecem **grandes**, como no WhatsApp.
+  - Créditos: nomes dos emojis do [emojibase](https://emojibase.dev) (MIT); bandeiras da fonte “Twemoji Country Flags” (arte do Twemoji, CC-BY 4.0 — `fonts/LICENSE-TwemojiCountryFlags.md`).
+
 ## Novidades da 1.12.0
 
 - **Conversas: figurinhas como no WhatsApp.** Aparecem inteiras (animadas, quando forem), sem balão em volta e com o horário num selo sobre a imagem. São baixadas sozinhas ao abrir a conversa e guardadas no computador.
@@ -100,7 +109,7 @@ aba do WhatsApp (js/chat-page.js, WA-JS) ⇄ js/chat-content.js ⇄ porta "orbit
 ```sh
 node --test tests/*.test.mjs            # unitários (motor de tradução, transcrição, voz, utilidades)
 npm i -D playwright && npx playwright install chromium
-node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect, stale-worker, sticker
+node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect, stale-worker, sticker, emoji-sticker
 ```
 
 Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web simulado (`tests/e2e/fake-whatsapp.html`) e provedores de IA/voz simulados — nenhuma chave real é usada.

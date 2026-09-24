@@ -186,6 +186,17 @@
     return out;
   }
 
+  // Mensagem só com emojis (até 3): o WhatsApp mostra grande. Devolve quantos
+  // (1 a 3), ou 0 se tiver qualquer outra coisa.
+  const EMOJI_RE = /^(?:\p{RI}\p{RI}|[\p{Extended_Pictographic}\p{Emoji_Presentation}](?:\uFE0F|\p{EMod})?(?:\u200D[\p{Extended_Pictographic}\p{Emoji_Presentation}](?:\uFE0F|\p{EMod})?)*|[#*0-9]\uFE0F?\u20E3)$/u;
+  function emojiOnly(text) {
+    const t = String(text || "").trim();
+    if (!t || t.length > 60) return 0;
+    const parts = [...new Intl.Segmenter("pt", { granularity: "grapheme" }).segment(t)].map((s) => s.segment).filter((s) => s.trim());
+    if (!parts.length || parts.length > 3) return 0;
+    return parts.every((p) => EMOJI_RE.test(p) && !/^[0-9#*]$/.test(p)) ? parts.length : 0;
+  }
+
   // Texto que representa a mensagem para tradução: a transcrição, nos áudios.
   const sourceText = (m) => (m?.type === "audio" ? m.audio?.transcript || "" : m?.text || "");
 
@@ -204,7 +215,7 @@
 
   // ------------------------------------------------------------ banco
   const DB_NAME = "orbita-chat";
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   let dbPromise = null;
 
   const req = (r) =>
@@ -236,6 +247,8 @@
           db.createObjectStore("mediaCache", { keyPath: "key" }).createIndex("byCreated", "createdAt");
           db.createObjectStore("meta", { keyPath: "key" });
         }
+        // v2: biblioteca de figurinhas (recebidas, criadas, favoritas)
+        if (ev.oldVersion < 2) db.createObjectStore("stickers", { keyPath: "id" }).createIndex("byUsed", "usedAt");
       };
       r.onsuccess = () => {
         const db = r.result;
@@ -442,7 +455,7 @@
   globalThis.OrbitaChat = {
     CHANNEL, PORT_TAB, PORT_UI, OPS, EVENTS, TAB_CMDS,
     REVOKE_WINDOW_MS, canRevoke, getMessage, deleteMessageRecord,
-    moduleEnabled, SETTINGS_KEY, DEFAULT_SETTINGS, loadSettings, saveSettings, contactLangOf, sourceText, getMedia, putMedia, deleteMedia, diffWords, AI_VOICE_NOTICE,
+    moduleEnabled, SETTINGS_KEY, DEFAULT_SETTINGS, loadSettings, saveSettings, contactLangOf, sourceText, getMedia, putMedia, deleteMedia, diffWords, emojiOnly, AI_VOICE_NOTICE,
     digits, phoneVariants, formatPhone, mergeMessage, previewOf,
     DB_NAME, openDb, getChat, listChats, updateChat, upsertMessages, patchMessage, messagesPage, countMessages, getMeta, setMeta,
     openMainDbReadOnly, loadClientIndex, findClient,

@@ -64,6 +64,9 @@
     languages: '<path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/>',
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+    smile: '<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/>',
+    sticker: '<path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"/><path d="M14 3v4a2 2 0 0 0 2 2h4"/><path d="M8 13h.01"/><path d="M16 13h.01"/><path d="M10 16s.8 1 2 1c1.3 0 2-1 2-1"/>',
+    star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
     spellcheck: '<path d="m6 16 6-12 6 12"/><path d="M8 12h8"/><path d="m16 20 2 2 4-4"/>',
     file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
@@ -525,6 +528,7 @@
         try {
           await call(C.OPS.MEDIA_FETCH, { messageId: id }); // já no cache: não baixa de novo
           const media = await C.getMedia(id);
+          globalThis.OrbitaStickers?.add(media.blob, { source: "received" }).catch(() => {}); // entra na coleção
           if (S.current?.chatId !== chatId) return;
           stickers.urls.set(id, URL.createObjectURL(media.blob));
         } catch {
@@ -680,7 +684,8 @@
     else if (m.type === "other") body = `<span class="kind">${icon("clip", 14)} ${esc(m.label || "Mídia")}${m.filename ? `: ${esc(m.filename)}` : ""}</span>${m.text ? `<span class="cap">${textBlock(m)}</span>` : ""}`;
     else body = textBlock(m);
     const sticker = !m.revoked && m.type === "other" && m.media?.kind === "sticker";
-    const cls = ["b", m.fromMe ? "me" : "", first ? "first" : "", sticker ? "sticker" : "", m.revoked ? "revoked" : "", m._pending ? "pending" : "", m._new ? "new" : ""].filter(Boolean).join(" ");
+    const jumbo = !m.revoked && m.type === "text" && !m.textPt && !m.translatedText && C.emojiOnly(m.text);
+    const cls = ["b", m.fromMe ? "me" : "", first ? "first" : "", sticker ? "sticker" : "", jumbo ? `jumbo j${jumbo}` : "", m.revoked ? "revoked" : "", m._pending ? "pending" : "", m._new ? "new" : ""].filter(Boolean).join(" ");
     // menu do balão (apagar); não aparece em mensagens ainda sendo enviadas
     const menu = m._pending ? "" : `<button class="bmenu" data-menu="${esc(m.id)}" aria-label="Opções da mensagem" title="Opções">${icon("down", 16)}</button>`;
     return `${head}<div class="${cls}" data-id="${esc(m.id)}">${menu}${body}${meta}</div>`;
@@ -870,6 +875,7 @@
     if (S.voice) cancelVoice();
     closeAttach();
     clearStickers();
+    S.picker?.close();
     S.voiceMode = false;
     S.messages = [];
     S.complete = false;
@@ -880,8 +886,11 @@
       <button class="jump" id="jump" hidden aria-label="Ir para a última mensagem">${icon("down", 20)}</button>
       <div id="preview"></div>
       <div id="attach"></div>
+      <div class="pkbox" id="picker" hidden></div>
+      <div class="emsug" id="emsug" hidden role="listbox" aria-label="Sugestões de emoji"></div>
       <div class="dropzone" id="dropzone" hidden><div>${icon("clip", 30)}<b>Solte para anexar</b><small>Fotos, vídeos, áudios e documentos</small></div></div>
       <form class="composer" id="composer">
+        <button class="cbtn" id="emojiBtn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="Emojis e figurinhas" title="Emojis e figurinhas">${icon("smile", 19)}</button>
         <button class="cbtn" id="attachBtn" type="button" aria-label="Anexar arquivo" title="Anexar (ou cole um print com Ctrl+V, ou arraste o arquivo)">${icon("clip", 18)}</button>
         <input type="file" id="fileIn" multiple hidden>
         <button class="cbtn" id="micBtn" type="button" aria-label="Gravar em ${esc(langLabel(S.settings?.myLang || "pt"))} (vira texto para revisar)" title="Gravar sua fala: vira texto para você revisar">${icon("mic", 18)}</button>
@@ -929,10 +938,16 @@
       grow();
       renderComposer();
       qrSlash(ta.value);
+      emojiSuggest();
+    });
+    ta.addEventListener("blur", () => {
+      S.sel = [ta.selectionStart, ta.selectionEnd];
+      setTimeout(() => document.activeElement !== ta && hideEmojiSug(), 150);
     });
     $("#qrbar").addEventListener("click", onQrBarClick);
     renderQrBar();
     ta.addEventListener("keydown", (e) => {
+      if (emojiSugKeys(e)) return; // ":nome" → sugestões de emoji
       if (qrPickKeys(e)) return; // setas/Enter/Tab/Esc no seletor de respostas rápidas ("/")
       if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
         e.preventDefault();
@@ -941,6 +956,7 @@
     });
     $("#micBtn").addEventListener("click", () => startRecording());
     $("#fixBtn").addEventListener("click", fixNow);
+    bindPicker();
     bindAttach();
     $("#voiceBtn").addEventListener("click", () => {
       S.voiceMode = !S.voiceMode;
@@ -1060,6 +1076,123 @@
     }
     renderPreview();
   }
+
+  // ---- emojis e figurinhas (painel do botão 😊 e sugestões ao digitar ":")
+  function bindPicker() {
+    const btn = $("#emojiBtn");
+    S.picker = globalThis.OrbitaPicker.create($("#picker"), {
+      icon,
+      toast,
+      onEmoji: insertEmoji,
+      onSticker: sendStickerRec,
+      onClose: () => {
+        $("#emojiBtn")?.setAttribute("aria-expanded", "false");
+        $("#emojiBtn")?.classList.remove("on");
+        $("#text")?.focus();
+      },
+    });
+    btn.addEventListener("click", () => {
+      S.picker.toggle();
+      btn.setAttribute("aria-expanded", String(S.picker.isOpen));
+      btn.classList.toggle("on", S.picker.isOpen);
+    });
+  }
+
+  // Insere no cursor do campo (ou onde ele estava), mantendo o Ctrl+Z.
+  function insertEmoji(e, range) {
+    const ta = $("#text");
+    if (!ta || ta.readOnly || ta.disabled) return;
+    const [a, b] = range || (document.activeElement === ta ? [ta.selectionStart, ta.selectionEnd] : S.sel || [ta.value.length, ta.value.length]);
+    ta.focus();
+    ta.setSelectionRange(a, b);
+    if (!document.execCommand("insertText", false, e)) ta.setRangeText(e, a, b, "end");
+    S.sel = [ta.selectionStart, ta.selectionEnd];
+    ta.dispatchEvent(new Event("input"));
+  }
+
+  // Figurinha da coleção: aparece na hora (bolha provisória) e vai pelo mesmo
+  // envio dos anexos, como tipo "sticker".
+  async function sendStickerRec(rec) {
+    if (!composerState().ok) throw new Error(composerState().why);
+    const chatId = S.current.chatId;
+    const temp = { id: `pending-${Date.now()}`, chatId, fromMe: true, ts: Date.now(), type: "other", rawType: "sticker", text: "", ack: 0, media: { kind: "sticker", mime: rec.mime }, _pending: true, _new: true };
+    const url = URL.createObjectURL(rec.blob);
+    stickers.urls.set(temp.id, url);
+    S.messages.push(temp);
+    renderMessages({ toBottom: true });
+    try {
+      const uploadId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+      await C.putMedia(`up:${uploadId}`, rec.blob, { chatId });
+      const msg = await call(C.OPS.SEND_FILE, { chatId, uploadId, type: "sticker", filename: "sticker.webp" });
+      stickers.urls.set(msg.id, url);
+      const i = S.messages.indexOf(temp);
+      if (i >= 0) {
+        if (S.messages.some((m) => m.id === msg.id)) S.messages.splice(i, 1);
+        else S.messages[i] = msg;
+      }
+    } catch (e) {
+      S.messages = S.messages.filter((m) => m !== temp);
+      throw e;
+    } finally {
+      stickers.urls.delete(temp.id);
+      if (S.current?.chatId === chatId) renderMessages({ toBottom: true });
+    }
+  }
+
+  // ":nome" no fim do que foi digitado → até 8 emojis; Tab/Enter escolhe, setas navegam
+  const sug = { list: [], i: 0, start: 0 };
+  function emojiSuggest() {
+    const ta = $("#text");
+    const box = $("#emsug");
+    if (!ta || !box) return;
+    const before = ta.value.slice(0, ta.selectionStart);
+    const m = before.match(/(?:^|\s):([\p{L}\d_+-]{2,24})$/u);
+    const list = m && !before.startsWith("/") ? globalThis.OrbitaPicker.search(m[1], 8) : [];
+    if (!list.length) return hideEmojiSug();
+    Object.assign(sug, { list, i: 0, start: ta.selectionStart - m[1].length - 1 });
+    paintEmojiSug();
+  }
+  function paintEmojiSug() {
+    const box = $("#emsug");
+    box.hidden = false;
+    box.innerHTML = sug.list.map((x, i) => `<button type="button" role="option" aria-selected="${i === sug.i}" data-sug="${i}" title="${esc(x.label)}"><span>${x.e}</span><small>${esc(x.label)}</small></button>`).join("") + `<span class="emhint">Tab ou Enter escolhe · Esc fecha</span>`;
+  }
+  function hideEmojiSug() {
+    const box = $("#emsug");
+    if (box && !box.hidden) (box.hidden = true), (box.innerHTML = "");
+    sug.list = [];
+  }
+  function chooseEmojiSug(i) {
+    const x = sug.list[i];
+    const ta = $("#text");
+    if (!x || !ta) return;
+    const end = ta.selectionStart;
+    hideEmojiSug();
+    insertEmoji(x.e, [sug.start, end]);
+  }
+  function emojiSugKeys(e) {
+    if (!sug.list.length) return false;
+    if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+      e.preventDefault();
+      chooseEmojiSug(sug.i);
+    } else if (e.key === "ArrowDown" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowLeft") {
+      if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && !e.altKey) return false; // setas laterais continuam movendo o cursor
+      e.preventDefault();
+      sug.i = (sug.i + (e.key === "ArrowDown" ? 1 : -1) + sug.list.length) % sug.list.length;
+      paintEmojiSug();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      hideEmojiSug();
+    } else return false;
+    return true;
+  }
+  document.addEventListener("mousedown", (e) => {
+    const b = e.target.closest?.("#emsug [data-sug]");
+    if (!b) return;
+    e.preventDefault(); // o campo continua com o cursor
+    chooseEmojiSug(Number(b.dataset.sug));
+  });
 
   // ---- corretor: botão "Corrigir agora" ao lado do campo e, opcional (Opções,
   // sem tradução), correção automática ao enviar, com prévia do que mudou.
@@ -2074,7 +2207,8 @@
       return;
     }
     if (e.key !== "Escape") return;
-    if (S.attach) {
+    if (S.picker?.isOpen) S.picker.close();
+    else if (S.attach) {
       if (!S.attach.sending) closeAttach();
     } else if (S.current && S.trOpen) {
       S.trOpen = false;

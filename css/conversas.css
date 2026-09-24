@@ -23,8 +23,11 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+/* bandeiras: o Windows não desenha as de países (mostra "BR"); esta fonte só cobre as bandeiras */
+@font-face { font-family: "Twemoji Country Flags"; src: url("../fonts/TwemojiCountryFlags.woff2") format("woff2"); font-display: swap;
+  unicode-range: U+1F1E6-1F1FF, U+1F3F4, U+E0062-E0063, U+E0065, U+E0067, U+E006C, U+E006E, U+E0073-E0074, U+E0077, U+E007F; }
 html, body { margin: 0; height: 100%; }
-body { background: var(--background); color: var(--foreground); font: 14px/1.45 "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; overflow: hidden; }
+body { background: var(--background); color: var(--foreground); font: 14px/1.45 "Twemoji Country Flags", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; overflow: hidden; }
 body.embed { background: transparent; }
 button, input, textarea { font: inherit; color: inherit; }
 svg { display: block; flex: none; }
@@ -383,3 +386,87 @@ body.expanded .msgs { padding-left: 10%; padding-right: 10%; }
 .b.sticker .stkph { width: 130px; height: 130px; border-radius: 18px; display: grid; place-items: center; color: var(--wa-meta); background: color-mix(in srgb, var(--wa-in) 55%, transparent); }
 .b.sticker .meta { position: absolute; right: 2px; bottom: 2px; float: none; margin: 0; top: auto; padding: 1px 7px; border-radius: 10px; background: var(--wa-in); box-shadow: 0 1px .5px rgba(11,20,26,.13); }
 .b.sticker .bmenu { background: var(--wa-in); box-shadow: 0 1px 2px rgba(11,20,26,.2); }
+
+/* ---- emojis e figurinhas: painel do botão 😊 */
+.pkbox { position: relative; z-index: 3; height: min(360px, 48vh); border-top: 1px solid var(--border); background: var(--card); animation: rise .15s ease-out; }
+.pkbox[hidden] { display: none; }
+.pk { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.pk-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px 0; }
+.pk-tabs { display: flex; gap: 4px; padding: 3px; border-radius: 12px; background: var(--muted); }
+.pk-tabs button { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 14px; border: 0; border-radius: 9px; background: none; cursor: pointer; font-weight: 600; font-size: 13px; color: var(--muted-foreground); }
+.pk-tabs button[aria-selected="true"] { background: var(--card); color: var(--foreground); box-shadow: var(--shadow-sm); }
+.pk-body { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; min-height: 0; }
+.pk-body[data-body="sticker"] { grid-template-rows: auto minmax(0, 1fr); }
+.pk-body[hidden] { display: none; }
+.pk-bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; }
+.pk-search { flex: 1; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-radius: 10px; background: var(--muted); color: var(--muted-foreground); border: 1px solid transparent; }
+.pk-search:focus-within { border-color: var(--ring); background: var(--background); }
+.pk-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--foreground); font-size: 13.5px; }
+.pk-search input::-webkit-search-cancel-button { cursor: pointer; }
+.pk-tonewrap { position: relative; }
+.pk-tone { width: 34px; height: 34px; border-radius: 10px; border: 0; background: var(--muted); cursor: pointer; font-size: 19px; line-height: 1; }
+.pk-tones { position: absolute; right: 0; top: 40px; z-index: 4; display: flex; gap: 2px; padding: 5px; border-radius: 12px; background: var(--card); box-shadow: var(--shadow-lg); border: 1px solid var(--border); }
+.pk-tones[hidden] { display: none; }
+.pk-tones button { width: 34px; height: 34px; border: 0; border-radius: 8px; background: none; cursor: pointer; font-size: 20px; }
+.pk-tones button:hover, .pk-tones button[aria-checked="true"] { background: var(--muted); }
+.pk-cats { display: flex; padding: 0 8px; border-bottom: 1px solid var(--border); transition: opacity .15s; }
+.pk-cats.off { opacity: .35; pointer-events: none; }
+.pk-cats button { flex: 1; height: 34px; border: 0; background: none; cursor: pointer; color: var(--muted-foreground); display: grid; place-items: center; position: relative; border-radius: 8px 8px 0 0; }
+.pk-cats button:hover { background: var(--muted); }
+.pk-cats button.on::after { content: ""; position: absolute; left: 20%; right: 20%; bottom: -1px; height: 3px; border-radius: 3px; background: var(--primary); }
+.pk-ce { font-size: 17px; line-height: 1; filter: grayscale(1); opacity: .75; transition: filter .15s, opacity .15s; }
+.pk-cats button.on .pk-ce, .pk-cats button:hover .pk-ce { filter: none; opacity: 1; }
+.pk-grid { overflow-y: auto; padding: 0 10px 10px; scroll-padding-top: 30px; }
+.pk-grid section[hidden] { display: none; }
+.pk-grid h4 { position: sticky; top: 0; z-index: 1; margin: 0; padding: 10px 4px 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-foreground); background: var(--card); }
+.pk-cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); }
+.pk-e, .emsug button span, .b.jumbo { font-family: "Twemoji Country Flags", "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif; }
+.pk-e { height: 42px; border: 0; border-radius: 10px; background: none; cursor: pointer; font-size: 27px; line-height: 1; display: grid; place-items: center; transition: transform .08s, background .12s; }
+.pk-e:hover, .pk-e:focus-visible { background: var(--muted); transform: scale(1.12); outline: 0; }
+.pk-e:active { transform: scale(.95); }
+.pk-empty { margin: 24px 0; text-align: center; color: var(--muted-foreground); }
+.pk-empty[hidden] { display: none; }
+.pk-foot { height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-top: 1px solid var(--border); color: var(--muted-foreground); font-size: 13px; }
+.pk-foot:not(.on)::before { content: "Clique para inserir · o painel fica aberto"; font-size: 12px; }
+.pk-big { font-size: 24px; line-height: 1; font-family: "Twemoji Country Flags", "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif; }
+.pk-name { color: var(--foreground); font-weight: 600; text-transform: lowercase; }
+.pk-name::first-letter { text-transform: uppercase; }
+/* figurinhas */
+.pk-seg { display: flex; gap: 4px; flex: 1; }
+.pk-seg button { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--card); cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--muted-foreground); }
+.pk-seg button[aria-pressed="true"] { background: color-mix(in oklch, var(--primary) 12%, transparent); border-color: color-mix(in oklch, var(--primary) 40%, transparent); color: var(--primary); }
+.pk-create { height: 32px; }
+.pk-sgrid { overflow-y: auto; padding: 4px 12px 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; align-content: start; }
+.pk-st { position: relative; aspect-ratio: 1; }
+.pk-sb { width: 100%; height: 100%; border: 0; border-radius: 14px; background: none; cursor: pointer; padding: 8px; transition: background .12s, transform .08s; }
+.pk-sb:hover, .pk-sb:focus-visible { background: var(--muted); outline: 0; }
+.pk-sb:active { transform: scale(.96); }
+.pk-sb img { width: 100%; height: 100%; object-fit: contain; display: block; user-select: none; }
+.pk-fav, .pk-rm { position: absolute; top: 4px; width: 24px; height: 24px; border-radius: 50%; border: 0; display: grid; place-items: center; cursor: pointer; background: var(--card); color: var(--muted-foreground); box-shadow: var(--shadow-sm); opacity: 0; transition: opacity .12s; }
+.pk-fav { left: 4px; }
+.pk-rm { right: 4px; }
+.pk-st:hover .pk-fav, .pk-st:hover .pk-rm, .pk-fav:focus-visible, .pk-rm:focus-visible, .pk-fav.on { opacity: 1; }
+.pk-fav.on { color: #f59e0b; }
+.pk-fav.on svg { fill: currentColor; }
+.pk-rm:hover { color: var(--destructive); }
+.pk-st.sending .pk-sb { opacity: .45; }
+.pk-spin { position: absolute; inset: 0; display: grid; place-items: center; color: var(--primary); pointer-events: none; }
+.pk-none { grid-column: 1 / -1; display: grid; justify-items: center; gap: 8px; text-align: center; padding: 26px 20px; color: var(--muted-foreground); }
+.pk-none b { color: var(--foreground); font-size: 15px; }
+.pk-none span { max-width: 380px; font-size: 13px; }
+.pk-none .btn { margin-top: 6px; }
+#emojiBtn.on { background: color-mix(in oklch, var(--primary) 14%, transparent); color: var(--primary); }
+/* ":nome" → sugestões de emoji acima do campo */
+.emsug { display: flex; align-items: center; gap: 4px; padding: 6px 12px; background: var(--card); border-top: 1px solid var(--border); overflow-x: auto; position: relative; z-index: 2; }
+.emsug[hidden] { display: none; }
+.emsug button { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px 0 6px; border-radius: 10px; border: 1px solid transparent; background: none; cursor: pointer; white-space: nowrap; }
+.emsug button span { font-size: 21px; line-height: 1; }
+.emsug button small { font-size: 12px; color: var(--muted-foreground); max-width: 130px; overflow: hidden; text-overflow: ellipsis; }
+.emsug button[aria-selected="true"] { background: color-mix(in oklch, var(--primary) 12%, transparent); border-color: color-mix(in oklch, var(--primary) 35%, transparent); }
+.emsug .emhint { margin-left: auto; padding-left: 10px; font-size: 11px; color: var(--muted-foreground); white-space: nowrap; }
+/* mensagem só com emojis: maior, como no WhatsApp */
+.b.jumbo { line-height: 1.15; }
+.b.jumbo.j1 { font-size: 48px; }
+.b.jumbo.j2 { font-size: 40px; }
+.b.jumbo.j3 { font-size: 34px; }
+.b.jumbo .meta { font-family: "Segoe UI", system-ui, sans-serif; }

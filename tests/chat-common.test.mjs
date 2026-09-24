@@ -66,3 +66,13 @@ test("diffWords destaca só as palavras que mudaram", () => {
   assert.equal(d.map((w) => w.t).join(""), "Olá, você pode vir amanhã");
   assert.deepEqual(C.diffWords("igual", "igual"), [{ t: "igual", changed: false }]);
 });
+
+test("emojiOnly: até 3 emojis (com tom, bandeira, ZWJ) e nada mais", () => {
+  assert.equal(C.emojiOnly("😀"), 1);
+  assert.equal(C.emojiOnly(" 👍🏽 🇧🇷 👨‍👩‍👧 "), 3);
+  assert.equal(C.emojiOnly("❤️"), 1);
+  assert.equal(C.emojiOnly("😂😂😂😂"), 0);
+  assert.equal(C.emojiOnly("oi 😀"), 0);
+  assert.equal(C.emojiOnly("1"), 0);
+  assert.equal(C.emojiOnly(""), 0);
+});

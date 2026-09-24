@@ -563,7 +563,7 @@
   // tem limite de tamanho: o arquivo vai em pedaços e é remontado na aba.
   const UPLOAD_CHUNK = 4 * 1024 * 1024;
   const UPLOAD_MAX = 100 * 1024 * 1024;
-  const FILE_TYPES = new Set(["image", "video", "audio", "document"]);
+  const FILE_TYPES = new Set(["image", "video", "audio", "document", "sticker"]);
   async function sendFile(req) {
     if (!status.ready) throw new Error("Abra o WhatsApp Web em uma aba para enviar.");
     const rec = await C.getMedia(`up:${req.uploadId}`);
@@ -573,7 +573,7 @@
     const type = FILE_TYPES.has(req.type) ? req.type : "document";
     let caption = String(req.caption || "");
     let extra;
-    if (type !== "audio" && (caption.trim() || String(req.captionPt || "").trim())) ({ text: caption, extra } = await outgoingText(req.chatId, caption, req.captionPt, req.skipPreview));
+    if (type !== "audio" && type !== "sticker" && (caption.trim() || String(req.captionPt || "").trim())) ({ text: caption, extra } = await outgoingText(req.chatId, caption, req.captionPt, req.skipPreview));
     const chunks = Math.max(1, Math.ceil(blob.size / UPLOAD_CHUNK));
     for (let i = 0; i < chunks; i++) {
       const bytes = new Uint8Array(await blob.slice(i * UPLOAD_CHUNK, (i + 1) * UPLOAD_CHUNK).arrayBuffer());
