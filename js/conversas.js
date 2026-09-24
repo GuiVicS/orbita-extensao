@@ -813,13 +813,10 @@
     $("#micBtn").disabled = !st.ok || Boolean(S.voice) || Boolean(S.preview);
     $("#attachBtn").disabled = !st.ok || Boolean(S.voice);
     const fb = $("#fixBtn");
-    const fixOn = Boolean(S.settings?.autoCorrect);
-    fb.classList.toggle("on", fixOn && !translating());
-    fb.setAttribute("aria-pressed", String(fixOn));
-    fb.title = translating()
-      ? "Corretor automático: não é usado com a tradução ligada (a IA já ajusta o texto ao traduzir)"
-      : `Corretor automático ${fixOn ? "ligado" : "desligado"}: ${fixOn ? "a IA corrige ortografia e gramática antes de enviar. Clique para desligar." : "clique para a IA corrigir ortografia e gramática antes de enviar."}`;
-    fb.setAttribute("aria-label", fb.title);
+    fb.disabled = !ta.value.trim() || Boolean(S.voice) || Boolean(S.preview) || S.fixing;
+    fb.innerHTML = S.fixing ? icon("spinner", 18, 'class="spin"') : icon("spellcheck", 18);
+    fb.title = `Corrigir o texto agora (ortografia e gramática) · Ctrl+Z desfaz${S.settings?.autoCorrect && !translating() ? " · correção automática ao enviar: ligada" : ""}`;
+    fb.setAttribute("aria-label", "Corrigir o texto agora");
     const vb = $("#voiceBtn");
     vb.disabled = !st.ok;
     vb.classList.toggle("on", S.voiceMode);
@@ -889,7 +886,7 @@
         <input type="file" id="fileIn" multiple hidden>
         <button class="cbtn" id="micBtn" type="button" aria-label="Gravar em ${esc(langLabel(S.settings?.myLang || "pt"))} (vira texto para revisar)" title="Gravar sua fala: vira texto para você revisar">${icon("mic", 18)}</button>
         <button class="cbtn" id="voiceBtn" type="button" aria-pressed="false" aria-label="Enviar como áudio com voz gerada" title="Enviar como áudio (voz gerada pelo Fish Audio)">${icon("speaker", 18)}</button>
-        <button class="cbtn" id="fixBtn" type="button" aria-pressed="false" aria-label="Corretor automático">${icon("spellcheck", 18)}</button>
+        <button class="cbtn" id="fixBtn" type="button" aria-label="Corrigir o texto agora">${icon("spellcheck", 18)}</button>
         <label class="sr" for="text">Mensagem</label><textarea id="text" rows="1"></textarea>
         <button class="send" id="sendBtn" type="submit" aria-label="Enviar mensagem" disabled>${icon("send", 18)}</button></form>
       <div class="qrbar" id="qrbar" aria-label="Respostas rápidas"></div>`;
@@ -943,7 +940,7 @@
       }
     });
     $("#micBtn").addEventListener("click", () => startRecording());
-    $("#fixBtn").addEventListener("click", toggleAutoCorrect);
+    $("#fixBtn").addEventListener("click", fixNow);
     bindAttach();
     $("#voiceBtn").addEventListener("click", () => {
       S.voiceMode = !S.voiceMode;
@@ -1064,18 +1061,41 @@
     renderPreview();
   }
 
-  // ---- corretor automático (opcional, sem tradução): a IA corrige
-  // ortografia e gramática; a prévia mostra o que mudou antes de enviar.
-  async function toggleAutoCorrect() {
-    const on = !S.settings.autoCorrect;
-    if (on && !S.settings.privacyAccepted) {
-      if (!(await privacyDialog("corretor"))) return;
+  // ---- corretor: botão "Corrigir agora" ao lado do campo e, opcional (Opções,
+  // sem tradução), correção automática ao enviar, com prévia do que mudou.
+  async function fixNow() {
+    const ta = $("#text");
+    const text = ta.value;
+    if (!text.trim() || S.fixing) return;
+    if (!S.settings.privacyAccepted) {
+      if (!(await privacyDialog("corretor"))) return ta.focus();
       S.settings = await C.saveSettings({ privacyAccepted: true });
     }
-    S.settings = await C.saveSettings({ autoCorrect: on });
+    const chatId = S.current?.chatId;
+    S.fixing = true;
     renderComposer();
-    toast(on ? "Corretor ligado: o texto é corrigido antes de enviar." : "Corretor desligado.");
-    $("#text")?.focus();
+    try {
+      const r = await call(C.OPS.CORRECT, { text });
+      if (S.current?.chatId !== chatId || !$("#text")) return;
+      if (ta.value !== text) return toast("O texto mudou enquanto corrigia. Clique de novo.", "err");
+      if (!r.changed) return toast("Nada a corrigir.", "ok");
+      // insertText mantém o Ctrl+Z do campo (volta ao que você escreveu)
+      ta.focus();
+      ta.select();
+      if (!document.execCommand("insertText", false, r.text)) ta.value = r.text;
+      S.fixedText = r.text; // já corrigido: o envio não corrige de novo
+      const n = C.diffWords(text, r.text).filter((w) => w.changed).length;
+      toast(`${n} ${n === 1 ? "palavra corrigida" : "palavras corrigidas"}. Ctrl+Z desfaz.`, "ok");
+    } catch (e) {
+      toast(`Não foi possível corrigir: ${e.message}`, "err");
+    } finally {
+      S.fixing = false;
+      if (S.current?.chatId === chatId) {
+        renderComposer();
+        ta.dispatchEvent(new Event("input")); // ajusta a altura do campo
+        ta.focus();
+      }
+    }
   }
 
   async function requestCorrection(text) {

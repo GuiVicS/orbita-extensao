@@ -50,18 +50,34 @@ const type = async (t) => {
 };
 
 // desligado (padrão): envia direto, sem chamar a IA
-assert.equal(await page.getAttribute("#fixBtn", "aria-pressed"), "false");
+assert.equal(await page.isDisabled("#fixBtn"), true); // campo vazio
 await type("sem corretor");
 await page.press("#text", "Enter");
 await page.waitForFunction(() => [...document.querySelectorAll(".b.me")].some((b) => b.textContent.includes("sem corretor")));
 assert.equal(await aiCalls(), 0);
 
-// ligar: aviso de privacidade na primeira vez
+// botão "Corrigir agora": aviso de privacidade na primeira vez; corrige no campo, sem enviar
+const sentBefore = (await sentTexts()).length;
+await type("ola voce viu amanha");
 await page.click("#fixBtn");
 await page.click('.modal [data-a="yes"]');
-await page.waitForFunction(() => document.getElementById("fixBtn").getAttribute("aria-pressed") === "true");
-const st = await page.evaluate(async () => (await chrome.storage.local.get("orbita:chat:settings"))["orbita:chat:settings"]);
-assert.equal(st.autoCorrect, true);
+await page.waitForFunction(() => document.getElementById("text").value === "Olá, você viu amanhã");
+console.log("corrigido no campo:", await page.inputValue("#text"), "|", await page.locator(".toast").last().innerText());
+await page.screenshot({ path: shots + "/corretor-botao.png" });
+assert.equal((await sentTexts()).length, sentBefore);
+await page.keyboard.press("Control+z"); // desfaz a correção
+assert.equal(await page.inputValue("#text"), "ola voce viu amanha");
+await page.click("#fixBtn");
+await page.waitForFunction(() => document.getElementById("text").value === "Olá, você viu amanhã");
+await type("Tudo certo aqui");
+await page.click("#fixBtn");
+await page.waitForSelector('.toast:has-text("Nada a corrigir")');
+assert.equal(await page.inputValue("#text"), "Tudo certo aqui");
+await type("");
+
+// correção automática ao enviar (Opções)
+await page.evaluate(() => OrbitaChat.saveSettings({ autoCorrect: true }));
+await page.waitForFunction(() => document.getElementById("fixBtn").title.includes("automática ao enviar: ligada"));
 
 // com erros: prévia com destaque; Enter envia o corrigido
 await type("ola voce pode vir amanha as 10h");
@@ -117,18 +133,15 @@ await type("ola direto");
 await page.press("#text", "Enter");
 await wa.waitForFunction(() => __store["5511999998888@c.us"].some((m) => m.body === "Olá, direto"));
 
-// com a tradução ligada o corretor não é usado
+// com a tradução ligada a correção automática não é usada (o texto vai para a prévia da tradução)
 await page.click("#trBtn");
 await page.check("#trEnabled");
 await page.keyboard.press("Escape");
-assert.equal(await page.evaluate(() => document.getElementById("fixBtn").classList.contains("on")), false);
-
-// desligar pelo botão
-await page.click("#trBtn");
-await page.uncheck("#trEnabled");
-await page.keyboard.press("Escape");
-await page.click("#fixBtn");
-await page.waitForFunction(() => document.getElementById("fixBtn").getAttribute("aria-pressed") === "false");
+const calls = await aiCalls();
+await type("ola traduz");
+await page.press("#text", "Enter");
+await page.waitForSelector(".pv .pvtext");
+assert.equal(await aiCalls(), calls);
 console.log("ERRORS", errors);
 assert.equal(errors.length, 0);
 await ctx.close();
