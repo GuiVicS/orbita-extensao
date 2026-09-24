@@ -46,7 +46,7 @@ assert.equal(chats.find((c) => c.chatId === "123456789@lid").client, null, "@lid
 
 let open = await call(dash, "chat.open", { chatId: "5511999998888@c.us" });
 console.log("open:", open.messages.map((m) => `${m.fromMe ? "→" : "←"} ${m.text} (ack ${m.ack})`), "warning:", open.warning);
-assert.equal(open.messages.length, 5, "3 textos + 2 mensagens de voz");
+assert.equal(open.messages.length, 10, "3 textos + 2 mensagens de voz + 5 mídias (foto, vídeo, PDF, .docx, .zip)");
 
 // evento: mensagem nova recebida
 await wa.evaluate(() => { const m = __mk("5511999998888@c.us", 10, false, "Are you there?", Date.now() / 1000 | 0, 0); __store["5511999998888@c.us"].push(m); __fire("chat.new_message", m); });

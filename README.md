@@ -4,6 +4,16 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.9.0
+
+- **Conversas: resumo do CRM editável** no painel lateral: nome, etapa do funil, tags, notas (incluir/excluir), “IA responde este cliente”, alerta de atenção e “Adicionar ao CRM”. Grava no mesmo formato do CRM do painel, que se atualiza na hora. (Corrigido: as notas do CRM não apareciam no painel.)
+- **Foto de perfil** do WhatsApp na lista, no cabeçalho e no painel (links expirados são renovados sozinhos).
+- **Mídias**: miniaturas de fotos e vídeos no balão; clique abre o visualizador (foto, vídeo e PDF, com setas entre as mídias, baixar e Esc). Documentos com tipo, páginas e tamanho, para abrir ou baixar. Arquivos de até 100 MB (transferidos em pedaços).
+- **Respostas rápidas dentro das Conversas**: barra sob o campo, “/atalho” e botão ⚡. Com a tradução ligada, os textos são traduzidos e mostrados numa prévia antes de enviar.
+- **Tela cheia na página**: o botão agora faz o chat ocupar toda a aba do painel (não o monitor); Esc volta.
+- **Liga/desliga** das Conversas em Opções → Módulos.
+- Corrigido: **“Áudio não enviado: invalid_data_url”** ao enviar voz (Conversas e respostas rápidas) — a voz agora vai como arquivo.
+
 ## Novidades da 1.8.2
 
 - **Fish Audio: “créditos acabados” em contas sem plano pago da API.** O modelo padrão agora é o `s2.1-pro-free` (os modelos `s2.1-pro`, `s2-pro` e `s1` exigem créditos pagos e respondiam 402). Se o modelo escolhido responder 402, a voz é gerada com o gratuito, que passa a ser o padrão, e um aviso explica a troca. As Opções indicam qual modelo exige créditos.
@@ -67,7 +77,7 @@ aba do WhatsApp (js/chat-page.js, WA-JS) ⇄ js/chat-content.js ⇄ porta "orbit
 ```sh
 node --test tests/*.test.mjs            # unitários (motor de tradução, transcrição, voz, utilidades)
 npm i -D playwright && npx playwright install chromium
-node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen
+node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle
 ```
 
 Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web simulado (`tests/e2e/fake-whatsapp.html`) e provedores de IA/voz simulados — nenhuma chave real é usada.
@@ -145,6 +155,7 @@ Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web
 | `2-consultas.json` | `js/wa-js.js` | Até 4 consultas `queryExists` por contato (op `resolve` sem cache + `sendText` de novo, ×2 variantes do 9º dígito) | Checa chat local antes de consultar o servidor; `resolve` usa o mesmo cache (10 min) do envio |
 | `3-4-service-worker.json` | `js/service_worker.js` | Número sem WhatsApp reduzia o intervalo para 2–4 s; sem pausa por lote; sem limite diário | Intervalo normal sempre; padrão pausa de 10 min a cada 25 envios; limite diário global de 250 contatos (`settings.dailyLimit`, contador em `chrome.storage.local["orbita:dailySent"]`), retomando no dia seguinte |
 | `4-ui-defaults.json` | `js/dashboard.js`, `js/popup.js` | Padrão da UI com `batchSize: 0` | Padrão `batchSize: 25`, `batchPauseMin: 10` |
+| `9-modulo-conversas.json` | `js/dashboard.js` | Conversas sem liga/desliga | Módulo `conversas` (padrão ligado) e item do menu ligado a ele |
 | `8-conversas-tela-cheia.json` | `js/dashboard.js` | iframe das Conversas sem permissão de tela cheia | `allow="microphone; fullscreen"` e `allowFullScreen` |
 | `7-conversas.json` | `js/dashboard.js` | Sem chat no painel | Item “Conversas” no menu e rota `#/conversas` (página `conversas.html` em iframe) |
 | `6-respostas-rapidas-backup.json` | `js/dashboard.js` | Sem página de respostas rápidas nem backup | Item “Respostas rápidas” no menu (página `quick-replies.html` em iframe) e botões “Baixar backup” / “Restaurar backup” em Configurações (`js/backup.js`) |
@@ -167,6 +178,7 @@ node patches/patch.mjs js/service_worker.js patches/5-ia-groq.json
 node patches/patch.mjs js/dashboard.js patches/6-respostas-rapidas-backup.json
 node patches/patch.mjs js/dashboard.js patches/7-conversas.json
 node patches/patch.mjs js/dashboard.js patches/8-conversas-tela-cheia.json
+node patches/patch.mjs js/dashboard.js patches/9-modulo-conversas.json
 ```
 
 `options.html`, `js/ia-options.js` e as entradas `options_ui` / `https://api.groq.com/*` do `manifest.json` não são patches: copie-os para o build novo.
