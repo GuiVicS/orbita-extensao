@@ -138,6 +138,10 @@
 
   async function onIncoming(message, chatInfo) {
     if (!message?.id) return;
+    if (pendingExtra.has(message.id)) {
+      message = { ...message, ...pendingExtra.get(message.id) };
+      pendingExtra.delete(message.id);
+    }
     const [change] = await C.upsertMessages([message]);
     if (!change) return;
     const chat = await touchChat(chatInfo || { chatId: message.chatId }, {
@@ -423,6 +427,108 @@
     return job;
   }
 
+  // ------------------------------------------------------ respostas rápidas
+  // Envia uma resposta rápida (a mesma das barras do WhatsApp Web) numa conversa.
+  // O envio em si é feito por js/quick-replies-page.js, na aba do WhatsApp.
+  const QR = globalThis.OrbitaQR;
+  const pendingExtra = new Map(); // id da mensagem → campos nossos (textPt…), aplicados quando o evento chegar
+  const qrRuns = new Map(); // chatId → { cancel }
+  const qrExec = (command, timeoutMs = 120000) => exec({ op: C.TAB_CMDS.QR, command, timeoutMs }, timeoutMs + 5000);
+
+  // Passos com variáveis preenchidas e, se a conversa for traduzida, textos traduzidos.
+  async function prepareQuickReply(chatId, itemId) {
+    const data = await QR.load();
+    const item = data.items.find((i) => i.id === itemId);
+    if (!item) throw new Error("Resposta rápida não encontrada.");
+    const chat = await C.getChat(chatId);
+    const ctx = { name: chat?.client?.name || chat?.name || "", phone: chat?.phone || "", me: "" };
+    const settings = await C.loadSettings();
+    const translate = Boolean(chat?.translation?.enabled);
+    const to = translate ? C.contactLangOf(chat, settings) : null;
+    const tone = chat?.translation?.tone || settings.tone;
+    const tr = async (text) => {
+      const pt = QR.renderVars(text || "", ctx).trim();
+      if (!translate || !pt) return { pt, out: pt };
+      const r = await T.translate({ text: pt, from: settings.myLang, to, tone, glossary: settings.glossary });
+      return { pt, out: r.text };
+    };
+    const steps = [];
+    for (const st of item.steps) {
+      const p = { ...st };
+      if (st.type === "text") Object.assign(p, await tr(st.text).then((r) => ({ textPt: r.pt, text: r.out })));
+      if (st.caption) Object.assign(p, await tr(st.caption).then((r) => ({ captionPt: r.pt, caption: r.out })));
+      if (st.type === "poll") {
+        const n = await tr(st.pollName);
+        p.pollName = n.out;
+        p.pollOptions = [];
+        for (const o of st.pollOptions || []) p.pollOptions.push((await tr(o)).out);
+      }
+      if (st.type === "location" && st.name) p.name = (await tr(st.name)).out;
+      steps.push(p);
+    }
+    return { item: { id: item.id, title: item.title }, steps, translated: translate, to, settings: data.settings };
+  }
+
+  const stepLabel = (s) => ({ text: "digitando…", audio: s.ptt ? "gravando áudio…" : "enviando áudio…", image: "enviando foto…", video: "enviando vídeo…", document: "enviando documento…", sticker: "enviando figurinha…", location: "enviando localização…", contact: "enviando contato…", poll: "criando enquete…" })[s.type] || "enviando…";
+
+  async function runQuickReply(chatId, prep) {
+    const run = { cancel: false };
+    qrRuns.set(chatId, run);
+    const st = prep.settings;
+    const total = prep.steps.length;
+    const progress = (extra) => broadcast(C.EVENTS.QR_PROGRESS, { chatId, title: prep.item.title, total, ...extra });
+    const wait = async (ms) => {
+      for (const end = Date.now() + ms; Date.now() < end; ) {
+        if (run.cancel) throw new Error("__cancel__");
+        await new Promise((r) => setTimeout(r, Math.min(150, end - Date.now())));
+      }
+    };
+    let sent = 0;
+    try {
+      for (let i = 0; i < total; i++) {
+        const s = prep.steps[i];
+        const gap = (i > 0 ? st.stepDelaySec : 0) + (s.delaySec || 0);
+        if (gap > 0) {
+          progress({ index: i, label: "aguardando…" });
+          await wait(gap * 1000);
+        }
+        progress({ index: i, label: stepLabel(s) });
+        let r;
+        if (s.type === "text") {
+          if (!s.text.trim()) continue;
+          if (st.simulate) {
+            await qrExec({ op: "presence", kind: "composing", chatId });
+            await wait(Math.min(st.maxTypingSec * 1000, Math.max(700, (s.text.length / Math.max(4, st.typingCps)) * 1000)));
+          }
+          r = await qrExec({ op: "sendText", chatId, text: s.text, linkPreview: s.linkPreview !== false });
+          if (r?.id && s.textPt && s.textPt !== s.text) pendingExtra.set(r.id, { textPt: s.textPt });
+        } else if (["audio", "image", "video", "document", "sticker"].includes(s.type)) {
+          const rec = await QR.getMediaRecord(s.mediaId);
+          if (!rec?.data) throw new Error(`Arquivo da resposta “${prep.item.title}” não encontrado. Edite a resposta e anexe de novo.`);
+          if (s.type === "audio" && s.ptt && st.simulate) {
+            await qrExec({ op: "presence", kind: "recording", chatId });
+            await wait(Math.min(st.maxRecordingSec * 1000, Math.max(1500, (s.duration || 3) * 1000)));
+          }
+          r = await qrExec(
+            { op: "sendFile", chatId, file: { b64: rec.data, mime: rec.mime || s.mime }, type: s.type, filename: s.name || "arquivo", mimetype: s.mime || rec.mime, caption: s.caption || undefined, isPtt: s.type === "audio" && Boolean(s.ptt), isPtv: Boolean(s.ptv), isGif: Boolean(s.gif), isHD: Boolean(s.hd), isViewOnce: Boolean(s.viewOnce) },
+            300000,
+          );
+          if (r?.id && s.captionPt && s.captionPt !== s.caption) pendingExtra.set(r.id, { textPt: s.captionPt });
+        } else if (s.type === "location") r = await qrExec({ op: "sendLocation", chatId, lat: s.lat, lng: s.lng, name: s.name, address: s.address, url: s.url });
+        else if (s.type === "contact") r = await qrExec({ op: "sendContact", chatId, name: s.contactName, phone: s.contactPhone });
+        else if (s.type === "poll") r = await qrExec({ op: "sendPoll", chatId, name: s.pollName, options: (s.pollOptions || []).filter(Boolean), multiple: Boolean(s.pollMultiple) });
+        sent++;
+      }
+      await QR.bumpStats(prep.item.id).catch(() => {});
+      progress({ done: true, sent });
+    } catch (e) {
+      progress({ done: true, sent, error: e.message === "__cancel__" ? null : e.message, canceled: e.message === "__cancel__" });
+    } finally {
+      qrExec({ op: "presence", kind: "paused", chatId }, 5000).catch(() => {});
+      qrRuns.delete(chatId);
+    }
+  }
+
   // ------------------------------------------------------ pedidos do painel
   async function handle(req) {
     switch (req.op) {
@@ -524,6 +630,38 @@
       case C.OPS.MEDIA_FETCH: {
         const media = await ensureMedia(String(req.messageId));
         return { key: media.key, mime: media.mime, size: media.size };
+      }
+
+      case C.OPS.QR_PREPARE: {
+        const prep = await prepareQuickReply(String(req.chatId), String(req.itemId));
+        if (!prep.translated) return { translated: false };
+        // prévia aprovada fica guardada: só estes textos traduzidos podem sair
+        const approvalId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+        await C.setMeta(`qr:${req.chatId}`, { approvalId, prep });
+        return { translated: true, approvalId, to: prep.to, toName: T.langName(prep.to), title: prep.item.title, steps: prep.steps.map((s) => ({ type: s.type, text: s.text, textPt: s.textPt, caption: s.caption, captionPt: s.captionPt, pollName: s.pollName, ptt: s.ptt, name: s.name })) };
+      }
+
+      case C.OPS.QR_RUN: {
+        const chatId = String(req.chatId);
+        if (qrRuns.has(chatId)) throw new Error("Já há uma resposta rápida sendo enviada nesta conversa.");
+        if (!status.ready) throw new Error("Abra o WhatsApp Web em uma aba para enviar.");
+        const chat = await C.getChat(chatId);
+        let prep;
+        if (chat?.translation?.enabled) {
+          // tradução ligada: só envia a versão traduzida que você viu na prévia
+          const a = await C.getMeta(`qr:${chatId}`);
+          if (!a || a.approvalId !== req.approvalId || a.prep.item.id !== req.itemId) throw new Error("Confira a tradução da resposta rápida antes de enviar.");
+          prep = a.prep;
+          await C.setMeta(`qr:${chatId}`, null);
+        } else prep = await prepareQuickReply(chatId, String(req.itemId));
+        runQuickReply(chatId, prep); // em segundo plano; o andamento vai pelo evento QR_PROGRESS
+        return { started: true, total: prep.steps.length };
+      }
+
+      case C.OPS.QR_CANCEL: {
+        const run = qrRuns.get(String(req.chatId));
+        if (run) run.cancel = true;
+        return Boolean(run);
       }
 
       case C.OPS.AVATAR:

@@ -69,6 +69,10 @@ const FAKE = {
       return ok(m.id._serialized);
     },
     downloadMedia: async (id) => (window.__downloads++, (window.__dlIds ||= []).push(id), window.__media[id] || wav),
+    markIsComposing: async () => (window.__presence ||= []).push("composing"),
+    markIsRecording: async () => (window.__presence ||= []).push("recording"),
+    markIsPaused: async () => (window.__presence ||= []).push("paused"),
+    sendLocationMessage: async (id, o) => { const m = { ...mk(id, `l${++sent}`, true, "", Date.now() / 1000 | 0, 1), type: "location", body: undefined }; store[id].push(m); setTimeout(() => (handlers["chat.new_message"] || []).forEach((f) => f(m)), 200); return ok(m.id._serialized); },
     getMessageById: async (id) => Object.values(store).flat().find((m) => m.id._serialized === id),
     sendTextMessage: async (id, text) => {
       const m = mk(id, `s${++sent}`, true, text, Date.now() / 1000 | 0, 1);

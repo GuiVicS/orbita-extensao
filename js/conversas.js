@@ -59,6 +59,8 @@
     stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
     play: '<polygon points="6 3 20 12 6 21 6 3"/>',
     pause: '<rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/>',
+    zap: '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
+    image: '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
     languages: '<path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/>',
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
@@ -696,6 +698,7 @@
     S.current = c;
     S.preview = null;
     S.trOpen = false;
+    closeQrPick();
     if (S.voice) cancelVoice();
     S.voiceMode = false;
     S.messages = [];
@@ -710,7 +713,8 @@
         <button class="cbtn" id="micBtn" type="button" aria-label="Gravar em ${esc(langLabel(S.settings?.myLang || "pt"))} (vira texto para revisar)" title="Gravar sua fala: vira texto para você revisar">${icon("mic", 18)}</button>
         <button class="cbtn" id="voiceBtn" type="button" aria-pressed="false" aria-label="Enviar como áudio com voz gerada" title="Enviar como áudio (voz gerada pelo Fish Audio)">${icon("speaker", 18)}</button>
         <label class="sr" for="text">Mensagem</label><textarea id="text" rows="1"></textarea>
-        <button class="send" id="sendBtn" type="submit" aria-label="Enviar mensagem" disabled>${icon("send", 18)}</button></form>`;
+        <button class="send" id="sendBtn" type="submit" aria-label="Enviar mensagem" disabled>${icon("send", 18)}</button></form>
+      <div class="qrbar" id="qrbar" aria-label="Respostas rápidas"></div>`;
     renderHeader();
     renderComposer();
     renderSide();
@@ -749,8 +753,12 @@
     ta.addEventListener("input", () => {
       grow();
       renderComposer();
+      qrSlash(ta.value);
     });
+    $("#qrbar").addEventListener("click", onQrBarClick);
+    renderQrBar();
     ta.addEventListener("keydown", (e) => {
+      if (qrPickKeys(e)) return; // setas/Enter/Tab/Esc no seletor de respostas rápidas ("/")
       if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
         e.preventDefault();
         $("#composer").requestSubmit();
@@ -1064,6 +1072,190 @@
     if (S.current?.chatId === chatId) renderMessages({ toBottom: true });
   }
 
+  // ---- respostas rápidas (as mesmas do WhatsApp Web, em js/qr-common.js)
+  const Q = globalThis.OrbitaQR;
+  const qr = { data: null, cat: "all", progress: null, pick: null };
+  async function loadQuickReplies() {
+    try {
+      qr.data = await Q.load();
+    } catch {
+      qr.data = null;
+    }
+    renderQrBar();
+  }
+  chrome.storage.onChanged.addListener((ch, area) => area === "local" && Q.KEY in ch && loadQuickReplies());
+
+  function qrItems(cat = qr.cat, query = "") {
+    if (!qr.data) return [];
+    let items = qr.data.items.filter((i) => i.steps.length);
+    if (cat === "fav") items = items.filter((i) => i.favorite);
+    else if (cat !== "all") items = items.filter((i) => i.categoryId === cat);
+    const q = query.trim().toLowerCase().replace(/^\//, "");
+    if (q) items = items.filter((i) => i.shortcut.startsWith(q) || i.title.toLowerCase().includes(q)).sort((a, b) => Number(b.shortcut.startsWith(q)) - Number(a.shortcut.startsWith(q)));
+    else if (qr.data.settings.favoritesFirst) items = [...items].sort((a, b) => Number(b.favorite) - Number(a.favorite));
+    return items;
+  }
+  const qrColor = (it) => qr.data?.categories.find((c) => c.id === it.categoryId)?.color || "#7c6cf0";
+  const qrTextOnly = (it) => it.steps.every((s) => s.type === "text");
+  const qrTypeIcons = (it) => [...new Set(it.steps.filter((s) => s.type !== "text").map((s) => (s.type === "audio" ? "mic" : s.type === "image" ? "image" : s.type === "video" ? "play" : "clip")))].map((k) => icon(k, 11)).join("");
+
+  function renderQrBar() {
+    const bar = $("#qrbar");
+    if (!bar) return;
+    if (qr.progress && qr.progress.chatId === S.current?.chatId) {
+      const p = qr.progress;
+      bar.innerHTML = `<div class="qrprog">${icon("spinner", 15, 'class="spin"')}<span><b>${esc(p.title)}</b> · ${Math.min(p.index + 1, p.total)}/${p.total} · ${esc(p.label || "")}</span>
+        <i class="qrtrack"><i style="width:${Math.round(((p.index + 0.5) / p.total) * 100)}%"></i></i><button class="btn sm" data-qr="cancel">${icon("x", 12)} Cancelar</button></div>`;
+      return;
+    }
+    if (!qr.data?.settings.enabled) return void (bar.innerHTML = "");
+    const items = qrItems();
+    const cats = [["all", "Todas"], ["fav", "Favoritas"], ...qr.data.categories.map((c) => [c.id, c.name])];
+    bar.innerHTML = `<button class="qrz" data-qr="pick" title="Respostas rápidas (ou digite / no campo)" aria-label="Buscar resposta rápida">${icon("zap", 14)}</button>
+      <select class="qrcat" aria-label="Categoria das respostas rápidas">${cats.map(([v, l]) => `<option value="${esc(v)}" ${qr.cat === v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>
+      <div class="qrchips">${items.length ? items.map((it) => `<button class="qrchip" data-qr="send" data-id="${esc(it.id)}" style="--c:${esc(qrColor(it))}" title="${esc(it.title)}${it.shortcut ? ` · /${esc(it.shortcut)}` : ""}${qrTextOnly(it) ? " · Shift+clique põe no campo" : ""}"><span class="em">${it.emoji ? esc(it.emoji) : icon("zap", 11)}</span>${esc(it.title)}<span class="ti">${qrTypeIcons(it)}</span></button>`).join("") : `<button class="qrchip empty" data-qr="manage">${icon("zap", 11)} Criar respostas rápidas</button>`}</div>`;
+    bar.querySelector(".qrcat").onchange = (e) => {
+      qr.cat = e.target.value;
+      renderQrBar();
+    };
+  }
+
+  function onQrBarClick(e) {
+    const b = e.target.closest("[data-qr]");
+    if (!b) return;
+    if (b.dataset.qr === "cancel") return call(C.OPS.QR_CANCEL, { chatId: S.current.chatId }).catch(() => {});
+    if (b.dataset.qr === "manage") return EMBED ? ((expanded && setExpanded(false)), (parent.location.hash = "#/respostas-rapidas")) : chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html#/respostas-rapidas") });
+    if (b.dataset.qr === "pick") return openQrPick("");
+    const item = qr.data.items.find((i) => i.id === b.dataset.id);
+    if (item) useQuickReply(item, { insert: e.shiftKey });
+  }
+
+  // Texto da resposta com as variáveis preenchidas (para colocar no campo).
+  function qrInsert(item) {
+    const c = S.current;
+    const ctx = { name: c.client?.name || c.name || "", phone: c.phone || "", me: "" };
+    const ta = $("#text");
+    ta.value = item.steps.map((s) => Q.renderVars(s.text, ctx)).join("\n\n");
+    ta.dispatchEvent(new Event("input"));
+    ta.focus();
+  }
+
+  async function useQuickReply(item, { insert = false } = {}) {
+    closeQrPick();
+    if (!S.current || !composerState().ok) return toast(composerState().why || "Abra uma conversa.", "err");
+    if (insert && qrTextOnly(item)) return qrInsert(item);
+    if (qr.progress) return toast("Aguarde: uma resposta rápida ainda está sendo enviada.");
+    const chatId = S.current.chatId;
+    try {
+      let approvalId;
+      if (translating()) {
+        // tradução ligada: prévia com os textos traduzidos antes de enviar
+        const p = await call(C.OPS.QR_PREPARE, { chatId, itemId: item.id });
+        if (!(await qrPreview(p))) return;
+        approvalId = p.approvalId;
+      } else if (qr.data.settings.confirmSend && !(await qrPreview({ title: item.title, steps: item.steps }))) return;
+      await call(C.OPS.QR_RUN, { chatId, itemId: item.id, approvalId });
+    } catch (e) {
+      toast(`Resposta rápida não enviada: ${e.message}`, "err");
+    }
+  }
+
+  function qrPreview(p) {
+    return new Promise((resolve) => {
+      const wrap = document.createElement("div");
+      wrap.className = "modal";
+      const stepHtml = (s) => {
+        if (s.type === "text") return `<div class="qrs"><div class="pvtext">${waFormat(s.text || "")}</div>${s.textPt && s.textPt !== s.text ? `<small>${esc(s.textPt)}</small>` : ""}</div>`;
+        const label = { audio: s.ptt ? "Áudio de voz (vai como foi gravado, sem tradução)" : "Áudio", image: "Foto", video: "Vídeo", document: `Documento${s.name ? `: ${s.name}` : ""}`, sticker: "Figurinha", location: "Localização", contact: "Contato", poll: `Enquete: ${s.pollName || ""}` }[s.type] || "Mídia";
+        return `<div class="qrs"><span class="qrk">${icon(s.type === "audio" ? "mic" : "clip", 13)} ${esc(label)}</span>${s.caption ? `<div class="pvtext">${waFormat(s.caption)}</div>${s.captionPt && s.captionPt !== s.caption ? `<small>${esc(s.captionPt)}</small>` : ""}` : ""}</div>`;
+      };
+      wrap.innerHTML = `<div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="qrpt"><div class="dz">${icon("zap", 22)}</div>
+        <h2 id="qrpt">${esc(p.title)}</h2><p class="muted">${p.toName ? `Vai ser enviada em ${esc(langLabel(p.to))}. Abaixo de cada texto, o original.` : "Confira antes de enviar."}</p>
+        <div class="qrsteps">${p.steps.map(stepHtml).join("")}</div>
+        <div class="pvact"><button class="btn" data-a="no">Cancelar</button><button class="btn primary" data-a="yes">${icon("send", 14)} Enviar</button></div></div>`;
+      document.body.append(wrap);
+      wrap.querySelector('[data-a="yes"]').focus();
+      const close = (ok) => (wrap.remove(), resolve(ok));
+      wrap.addEventListener("click", (e) => {
+        const a = e.target.closest("[data-a]")?.dataset.a;
+        if (a) close(a === "yes");
+        else if (e.target === wrap) close(false);
+      });
+      wrap.addEventListener("keydown", (e) => e.key === "Escape" && (e.stopPropagation(), close(false)));
+    });
+  }
+
+  function onQrProgress(p) {
+    if (p.done) {
+      if (p.chatId === qr.progress?.chatId || !qr.progress) qr.progress = null;
+      if (p.error) toast(`Falha na resposta “${p.title}” (${p.sent} de ${p.total} enviadas): ${p.error}`, "err");
+      else if (p.canceled) toast(`Envio cancelado (${p.sent} de ${p.total} enviadas).`);
+      else toast(`“${p.title}” enviada.`, "ok");
+    } else qr.progress = p;
+    renderQrBar();
+  }
+
+  // ---- seletor: "/" no campo ou o botão ⚡
+  function qrSlash(value) {
+    if (!qr.data?.settings.slash) return;
+    const m = value.match(/^\/(\S*)$/);
+    if (m) openQrPick(m[1], true);
+    else if (qr.pick?.slash) closeQrPick();
+  }
+
+  function openQrPick(query, slash = false) {
+    qr.pick = { query, slash, active: qr.pick?.query === query ? qr.pick.active : 0, results: qrItems("all", query) };
+    let box = $("#qrpick");
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "qrpick";
+      box.className = "qrpick";
+      $("#thread").append(box);
+      box.addEventListener("mousedown", (e) => e.preventDefault()); // não tira o foco do campo
+      box.addEventListener("click", (e) => {
+        const row = e.target.closest("[data-i]");
+        if (row) pickChoose(Number(row.dataset.i), e.shiftKey);
+      });
+    }
+    const r = qr.pick.results;
+    qr.pick.active = Math.min(qr.pick.active, Math.max(0, r.length - 1));
+    box.innerHTML = `<div class="qph">${icon("zap", 13)} Respostas rápidas <small>↑↓ escolher · Enter enviar · Shift+Enter pôr no campo · Esc fechar</small></div>
+      ${r.length ? r.slice(0, 40).map((it, i) => `<div class="qprow ${i === qr.pick.active ? "on" : ""}" data-i="${i}" style="--c:${esc(qrColor(it))}"><span class="em">${it.emoji ? esc(it.emoji) : icon("zap", 12)}</span><span class="qpt"><b>${esc(it.title)}</b>${it.shortcut ? ` <code>/${esc(it.shortcut)}</code>` : ""}<small>${esc(it.steps.map(Q.stepSummary).join(" · ").slice(0, 110))}</small></span><span class="ti">${qrTypeIcons(it)}</span></div>`).join("") : `<div class="qpempty">Nenhuma resposta rápida${query ? ` para “/${esc(query)}”` : ""}.</div>`}`;
+    box.querySelector(".qprow.on")?.scrollIntoView({ block: "nearest" });
+    if (!slash) $("#text").focus();
+  }
+
+  function closeQrPick() {
+    qr.pick = null;
+    $("#qrpick")?.remove();
+  }
+
+  function pickChoose(i, insert) {
+    const it = qr.pick?.results[i];
+    if (!it) return;
+    const wasSlash = qr.pick.slash;
+    closeQrPick();
+    if (wasSlash) {
+      $("#text").value = "";
+      $("#text").dispatchEvent(new Event("input"));
+    }
+    useQuickReply(it, { insert });
+  }
+
+  function qrPickKeys(e) {
+    if (!qr.pick) return false;
+    const n = qr.pick.results.length;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      qr.pick.active = (qr.pick.active + (e.key === "ArrowDown" ? 1 : -1) + n) % Math.max(1, n);
+      openQrPick(qr.pick.query, qr.pick.slash);
+    } else if ((e.key === "Enter" || e.key === "Tab") && n) pickChoose(qr.pick.active, e.shiftKey);
+    else if (e.key === "Escape") closeQrPick();
+    else return false;
+    e.preventDefault();
+    e.stopPropagation();
+    return true;
+  }
+
   // ---- aviso de privacidade (primeira vez que a tradução é ligada)
   function privacyDialog() {
     return new Promise((resolve) => {
@@ -1267,6 +1459,8 @@
 
   function onEvent({ event, data }) {
     switch (event) {
+      case C.EVENTS.QR_PROGRESS:
+        return onQrProgress(data);
       case C.EVENTS.STATUS_CHANGED:
         S.status = data;
         renderStatus();
@@ -1341,6 +1535,7 @@
     welcome();
     connect();
     S.settings = await C.loadSettings();
+    await loadQuickReplies();
     chrome.storage.onChanged.addListener((ch, area) => {
       if (area === "local" && C.SETTINGS_KEY in ch) C.loadSettings().then((st) => ((S.settings = st), renderHeader(), renderComposer()));
     });

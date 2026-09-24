@@ -135,6 +135,25 @@
   }
 
   // ---- comandos vindos do service worker
+  // chamada ao script das respostas rápidas (namespace "__orbita_qr__")
+  const qrPending = new Map();
+  window.addEventListener("message", (ev) => {
+    const m = ev.data;
+    if (ev.source !== window || m?.ns !== "__orbita_qr__" || m.dir !== "fromPage" || !qrPending.has(m.reqId)) return;
+    const p = qrPending.get(m.reqId);
+    qrPending.delete(m.reqId);
+    clearTimeout(p.timer);
+    m.ok ? p.resolve(m.data) : p.reject(new Error(m.error));
+  });
+  function qrCall(command, timeoutMs) {
+    const reqId = `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => (qrPending.delete(reqId), reject(new Error("Tempo esgotado no envio da resposta rápida."))), timeoutMs);
+      qrPending.set(reqId, { resolve, reject, timer });
+      window.postMessage({ ns: "__orbita_qr__", dir: "toPage", reqId, command }, window.location.origin);
+    });
+  }
+
   const CHUNK = 4 * 1024 * 1024;
   const pendingMedia = new Map(); // id → Blob, enquanto os pedaços são transferidos
 
@@ -169,6 +188,19 @@
         const code = result?.messageSendResult ?? (typeof result === "string" ? result : undefined);
         if (code !== undefined && code !== "OK" && code !== WPP()?.whatsapp?.enums?.SendMsgResult?.OK) throw new Error(`O WhatsApp recusou a mensagem (${String(code)}).`);
         return msg || { id: ser(res?.id), chatId: cmd.chatId, fromMe: true, ts: Date.now(), type: "text", rawType: "chat", text: cmd.text, ack: 0, revoked: false };
+      }
+      case "qr": {
+        // O envio das respostas rápidas já existe em js/quick-replies-page.js
+        // (mesma página); aqui só repassamos, com o arquivo remontado como Blob.
+        const command = { ...cmd.command };
+        if (command.file) {
+          const bin = atob(command.file.b64);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          command.blob = new Blob([bytes], { type: command.file.mime });
+          delete command.file;
+        }
+        return qrCall(command, cmd.timeoutMs || 300000);
       }
       case "profilePic": {
         // pode ir ao servidor do WhatsApp; devolve null quando a pessoa não tem foto

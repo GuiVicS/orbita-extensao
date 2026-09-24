@@ -38,6 +38,9 @@
     SEND_AUDIO: "chat.sendAudio", // envia a voz gerada como mensagem de voz
     CRM_CHANGED: "crm.changed", // o CRM foi editado nas Conversas: refaz o vínculo da conversa
     AVATAR: "chat.avatar", // busca/atualiza a foto de perfil da conversa
+    QR_PREPARE: "qr.prepare", // resposta rápida: traduz os passos para a prévia (tradução ligada)
+    QR_RUN: "qr.run", // resposta rápida: envia a sequência
+    QR_CANCEL: "qr.cancel",
   };
 
   // Preferências das Conversas (chrome.storage.local). Sem chaves de API aqui:
@@ -85,6 +88,7 @@
     MESSAGE_UPDATED: "message.updated",
     CHAT_UPDATED: "chat.updated",
     STATUS_CHANGED: "wa.status.changed",
+    QR_PROGRESS: "qr.progress", // andamento do envio de uma resposta rápida
   };
 
   // Comandos que o service worker executa na aba do WhatsApp (chat-page.js).
@@ -97,6 +101,7 @@
     SEND_VOICE: "sendVoice",
     PROFILE_PIC: "profilePic",
     MEDIA_CHUNK: "mediaChunk",
+    QR: "qr", // repassa um comando ao envio de respostas rápidas (js/quick-replies-page.js)
   };
 
   // ------------------------------------------------------------ telefones
