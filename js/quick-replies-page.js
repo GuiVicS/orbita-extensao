@@ -75,13 +75,6 @@
     return { id };
   }
 
-  const blobToDataUrl = (blob) =>
-    new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(String(r.result || ""));
-      r.onerror = () => reject(r.error || new Error("Falha ao ler o arquivo."));
-      r.readAsDataURL(blob);
-    });
 
   const chatApi = () => {
     const c = WPP()?.chat;
@@ -117,11 +110,12 @@
         const c = chatApi();
         const mimetype = cmd.mimetype || cmd.blob.type || "application/octet-stream";
         if (cmd.type === "audio" && cmd.isPtt) {
-          // mesmo caminho do disparo de campanhas: data URL + isPtt gera a
-          // mensagem de voz com forma de onda, igual a um áudio gravado na hora
-          const dataUrl = await blobToDataUrl(new Blob([cmd.blob], { type: mimetype }));
+          // isPtt gera a mensagem de voz com forma de onda, igual a um áudio
+          // gravado na hora. Vai como File: em texto (data URL), o WA-JS recusa o
+          // tipo "audio/ogg; codecs=opus" com "invalid_data_url".
+          const voice = new File([cmd.blob], "audio.ogg", { type: mimetype });
           return confirmSent(
-            await c.sendFileMessage(cmd.chatId, dataUrl, {
+            await c.sendFileMessage(cmd.chatId, voice, {
               ...opts,
               type: "audio",
               isPtt: true,

@@ -125,6 +125,9 @@
   }
 
   // ---- comandos vindos do service worker
+  const CHUNK = 4 * 1024 * 1024;
+  const pendingMedia = new Map(); // id → Blob, enquanto os pedaços são transferidos
+
   async function run(cmd) {
     if (cmd.op !== "status" && !ready()) throw new Error("O WhatsApp Web ainda está carregando.");
     const chat = WPP()?.chat;
@@ -164,8 +167,14 @@
         return { url: url || cachedAvatar(cmd.chatId) || null };
       }
       case "sendVoice": {
-        // mesmo caminho das respostas rápidas: data URL + isPtt = mensagem de voz com forma de onda
-        const res = await chat.sendFileMessage(cmd.chatId, `data:${cmd.mime};base64,${cmd.data}`, { createChat: true, waitForAck: false, type: "audio", isPtt: true, mimetype: cmd.mime, waveform: true });
+        // isPtt = mensagem de voz com forma de onda, igual a um áudio gravado na hora
+        // Vai como File: em texto (data URL), o WA-JS recusa o tipo
+        // "audio/ogg; codecs=opus" com "invalid_data_url".
+        const bin = atob(cmd.data);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const voice = new File([bytes], "audio.ogg", { type: cmd.mime });
+        const res = await chat.sendFileMessage(cmd.chatId, voice, { createChat: true, waitForAck: false, type: "audio", isPtt: true, mimetype: cmd.mime, waveform: true });
         const result = await Promise.race([res?.sendMsgResult, new Promise((r) => setTimeout(() => r({ timeout: true }), 60000))]).catch(() => null);
         const code = result?.messageSendResult ?? (typeof result === "string" ? result : undefined);
         if (code !== undefined && code !== "OK" && code !== WPP()?.whatsapp?.enums?.SendMsgResult?.OK) throw new Error(`O WhatsApp recusou o áudio (${String(code)}).`);
