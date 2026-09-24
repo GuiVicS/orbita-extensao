@@ -4,6 +4,10 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.11.0
+
+- **Conversas: anexar como no WhatsApp.** Cole um print com **Ctrl+V**, **arraste** fotos, vídeos, áudios ou documentos para a conversa, ou use o **clipe**. Abre uma prévia com miniaturas (dá para adicionar mais, remover e trocar a visualização) e uma legenda; **Enter** envia e **Esc** cancela. Prints colados ganham nome com data e hora. Arquivos de até 100 MB (vão em pedaços para a aba do WhatsApp). Com a tradução ligada, a legenda passa pela prévia e sai traduzida.
+
 ## Novidades da 1.10.0
 
 - **CRM: ficha do lead** no card do cliente (painel → CRM) e no painel lateral das Conversas, em quatro seções recolhíveis. Grava sozinho ao sair de cada campo:
@@ -90,7 +94,7 @@ aba do WhatsApp (js/chat-page.js, WA-JS) ⇄ js/chat-content.js ⇄ porta "orbit
 ```sh
 node --test tests/*.test.mjs            # unitários (motor de tradução, transcrição, voz, utilidades)
 npm i -D playwright && npx playwright install chromium
-node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form
+node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach
 ```
 
 Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web simulado (`tests/e2e/fake-whatsapp.html`) e provedores de IA/voz simulados — nenhuma chave real é usada.

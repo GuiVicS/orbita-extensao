@@ -63,6 +63,8 @@
     image: '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
     languages: '<path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/>',
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+    file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
     left: '<path d="m15 18-6-6 6-6"/>',
     right: '<path d="m9 18 6-6-6-6"/>',
@@ -139,6 +141,7 @@
     query: "",
     current: null, // chat aberto
     messages: [], // mensagens carregadas do chat aberto (ordem cronológica)
+    attach: null, // anexos na prévia: { items, sel, caption, approved, sending, progress }
     complete: false,
     loadingOlder: false,
     stages: new Map(),
@@ -719,6 +722,7 @@
     ta.title = st.ok ? "Enter envia · Shift+Enter quebra a linha" : st.why;
     $("#sendBtn").disabled = !st.ok || !ta.value.trim() || Boolean(S.voice);
     $("#micBtn").disabled = !st.ok || Boolean(S.voice) || Boolean(S.preview);
+    $("#attachBtn").disabled = !st.ok || Boolean(S.voice);
     const vb = $("#voiceBtn");
     vb.disabled = !st.ok;
     vb.classList.toggle("on", S.voiceMode);
@@ -770,6 +774,7 @@
     S.trOpen = false;
     closeQrPick();
     if (S.voice) cancelVoice();
+    closeAttach();
     S.voiceMode = false;
     S.messages = [];
     S.complete = false;
@@ -779,7 +784,11 @@
       <div class="msgs" id="msgs" role="log" aria-live="polite" aria-label="Mensagens"><div class="older">${icon("spinner", 14, 'class="spin"')} Carregando…</div></div>
       <button class="jump" id="jump" hidden aria-label="Ir para a última mensagem">${icon("down", 20)}</button>
       <div id="preview"></div>
+      <div id="attach"></div>
+      <div class="dropzone" id="dropzone" hidden><div>${icon("clip", 30)}<b>Solte para anexar</b><small>Fotos, vídeos, áudios e documentos</small></div></div>
       <form class="composer" id="composer">
+        <button class="cbtn" id="attachBtn" type="button" aria-label="Anexar arquivo" title="Anexar (ou cole um print com Ctrl+V, ou arraste o arquivo)">${icon("clip", 18)}</button>
+        <input type="file" id="fileIn" multiple hidden>
         <button class="cbtn" id="micBtn" type="button" aria-label="Gravar em ${esc(langLabel(S.settings?.myLang || "pt"))} (vira texto para revisar)" title="Gravar sua fala: vira texto para você revisar">${icon("mic", 18)}</button>
         <button class="cbtn" id="voiceBtn" type="button" aria-pressed="false" aria-label="Enviar como áudio com voz gerada" title="Enviar como áudio (voz gerada pelo Fish Audio)">${icon("speaker", 18)}</button>
         <label class="sr" for="text">Mensagem</label><textarea id="text" rows="1"></textarea>
@@ -835,6 +844,7 @@
       }
     });
     $("#micBtn").addEventListener("click", () => startRecording());
+    bindAttach();
     $("#voiceBtn").addEventListener("click", () => {
       S.voiceMode = !S.voiceMode;
       if (S.preview) closePreview(false);
@@ -1593,6 +1603,267 @@
     }
   }
 
+  // ------------------------------------------------------------- anexos
+  // Igual ao WhatsApp: cole um print (Ctrl+V), arraste arquivos para a conversa
+  // ou use o clipe. Abre uma prévia com legenda; Enter envia. Os arquivos vão
+  // para o cache de mídia ("up:<id>") e o service worker os manda em pedaços
+  // para a aba do WhatsApp (OPS.SEND_FILE).
+  const ATTACH_MAX = 100 * 1024 * 1024;
+  const fmtBytes = (n) => globalThis.OrbitaQR?.formatBytes?.(n) ?? `${Math.max(1, Math.round(n / 1024))} KB`;
+  const ATTACH_LABEL = { image: "Foto", video: "Vídeo", audio: "Áudio", document: "Documento" };
+
+  function attachType(file) {
+    const t = (file.type || "").toLowerCase();
+    if (/^image\/(jpeg|png|webp)$/.test(t)) return "image";
+    if (/^video\/(mp4|3gpp|quicktime)$/.test(t)) return "video";
+    if (/^audio\//.test(t)) return "audio";
+    return "document";
+  }
+
+  // prints colados chegam como "image.png": dá um nome com data e hora
+  function attachName(file) {
+    if (file.name && !/^image\.(png|jpe?g|gif|webp)$/i.test(file.name)) return file.name;
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, "0");
+    const ext = (file.type.split("/")[1] || "png").replace("jpeg", "jpg");
+    return `print-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.${ext}`;
+  }
+
+  // miniatura JPEG (base64), para o balão aparecer na hora
+  async function imageThumb(file) {
+    try {
+      const bmp = await createImageBitmap(file);
+      const k = Math.min(1, 96 / Math.max(bmp.width, bmp.height));
+      const cv = document.createElement("canvas");
+      cv.width = Math.max(1, Math.round(bmp.width * k));
+      cv.height = Math.max(1, Math.round(bmp.height * k));
+      cv.getContext("2d").drawImage(bmp, 0, 0, cv.width, cv.height);
+      const r = { thumb: cv.toDataURL("image/jpeg", 0.7).split(",")[1], width: bmp.width, height: bmp.height };
+      bmp.close?.();
+      return r;
+    } catch {
+      return {};
+    }
+  }
+
+  async function addAttachments(files) {
+    files = [...files].filter((f) => f && f.size >= 0);
+    if (!files.length || !S.current) return;
+    if (!composerState().ok) return toast(composerState().why, "err");
+    if (S.voice) return toast("Termine ou cancele o áudio antes de anexar.", "err");
+    S.attach ||= { items: [], sel: 0, caption: "", approved: null, sending: false, progress: "" };
+    const a = S.attach;
+    for (const f of files) {
+      if (f.size > ATTACH_MAX) {
+        toast(`${f.name || "Arquivo"} é grande demais (${fmtBytes(f.size)}). O limite aqui é 100 MB.`, "err");
+        continue;
+      }
+      if (!f.size) {
+        toast(`${f.name || "Arquivo"} está vazio.`, "err");
+        continue;
+      }
+      const type = attachType(f);
+      const item = { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, file: f, name: attachName(f), type, size: f.size, url: URL.createObjectURL(f) };
+      if (type === "image") Object.assign(item, await imageThumb(f));
+      if (S.attach !== a) return URL.revokeObjectURL(item.url); // fechou enquanto preparava
+      a.items.push(item);
+      a.sel = a.items.length - 1;
+    }
+    if (!a.items.length) return closeAttach();
+    renderAttach();
+    $("#attachCaption")?.focus();
+  }
+
+  function closeAttach() {
+    for (const i of S.attach?.items || []) URL.revokeObjectURL(i.url);
+    S.attach = null;
+    const box = $("#attach");
+    if (box) box.innerHTML = "";
+  }
+
+  function renderAttach() {
+    const box = $("#attach");
+    const a = S.attach;
+    if (!box) return;
+    if (!a) return void (box.innerHTML = "");
+    a.sel = Math.min(a.sel, a.items.length - 1);
+    const cur = a.items[a.sel];
+    const big =
+      cur.type === "image"
+        ? `<img src="${cur.url}" alt="${esc(cur.name)}">`
+        : cur.type === "video"
+          ? `<video src="${cur.url}" controls playsinline></video>`
+          : cur.type === "audio"
+            ? `<div class="afile">${icon("speaker", 40)}<b>${esc(cur.name)}</b><small>${esc(fmtBytes(cur.size))}</small><audio src="${cur.url}" controls></audio></div>`
+            : `<div class="afile"><span class="dico big">${esc((cur.name.split(".").pop() || "arq").slice(0, 4).toUpperCase())}</span><b>${esc(cur.name)}</b><small>${esc(fmtBytes(cur.size))}</small></div>`;
+    const hasCaptionTarget = a.items.some((i) => i.type !== "audio");
+    const tr = translating() && a.caption.trim() && hasCaptionTarget;
+    const ok = a.approved && a.approved.textPt === a.caption.trim();
+    const sendLabel = tr && S.settings.requirePreview && !ok ? "Ver tradução" : "Enviar";
+    const enter = !box.firstElementChild; // a animação de entrada só na abertura
+    box.innerHTML = `<div class="attach ${enter ? "enter" : ""}" role="dialog" aria-label="Enviar anexos">
+      <div class="ahead"><button class="ibtn" data-at="close" aria-label="Cancelar anexos" ${a.sending ? "disabled" : ""}>${icon("x", 18)}</button>
+        <b>${a.items.length === 1 ? esc(cur.name) : `${a.items.length} arquivos`}</b><small>${esc(ATTACH_LABEL[cur.type])} · ${esc(fmtBytes(cur.size))}</small></div>
+      <div class="astage">${big}</div>
+      ${
+        hasCaptionTarget
+          ? `<div class="acap"><input class="in" id="attachCaption" maxlength="1024" placeholder="${tr || translating() ? `Legenda em ${esc(langLabel(S.settings.myLang))} (vai traduzida)` : "Adicione uma legenda…"}" value="${esc(a.caption)}" ${a.sending ? "disabled" : ""}>
+             ${ok && tr ? `<div class="atr"><small>Vai assim (${esc(a.approved.toName || "")}):</small> ${esc(a.approved.translated)}</div>` : ""}
+             ${a.items.length > 1 ? `<small class="muted">A legenda vai com o primeiro arquivo${a.items[0].type === "audio" ? " que não é áudio" : ""}.</small>` : ""}</div>`
+          : ""
+      }
+      <div class="afoot"><div class="astrip">${a.items
+        .map(
+          (i, n) => `<div class="athumb ${n === a.sel ? "sel" : ""}"><button data-at="sel" data-n="${n}" aria-label="Ver ${esc(i.name)}" title="${esc(i.name)}">${i.type === "image" ? `<img src="${i.url}" alt="">` : icon(i.type === "video" ? "play" : i.type === "audio" ? "speaker" : "file", 20)}</button>
+            ${a.sending ? "" : `<button class="arm" data-at="rm" data-n="${n}" aria-label="Remover ${esc(i.name)}">${icon("x", 11)}</button>`}</div>`,
+        )
+        .join("")}
+        ${a.sending ? "" : `<button class="athumb add" data-at="add" aria-label="Adicionar arquivos" title="Adicionar arquivos">${icon("plus", 20)}</button>`}</div>
+        ${a.sending ? `<span class="aprog">${icon("spinner", 14, 'class="spin"')} ${esc(a.progress)}</span>` : ""}
+        <button class="send" data-at="send" aria-label="${sendLabel}" title="${sendLabel} (Enter)" ${a.sending ? "disabled" : ""}>${icon("send", 18)}</button></div></div>`;
+  }
+
+  async function sendAttachments() {
+    const a = S.attach;
+    if (!a || a.sending || !a.items.length) return;
+    const chatId = S.current.chatId;
+    const captionPt = a.caption.trim();
+    const captionAt = a.items.findIndex((i) => i.type !== "audio");
+    const extra = {};
+    if (captionPt && captionAt >= 0) {
+      if (!translating()) extra.caption = captionPt;
+      else if (!S.settings.requirePreview) Object.assign(extra, { captionPt, skipPreview: true });
+      else if (a.approved?.textPt === captionPt) Object.assign(extra, { caption: a.approved.translated, captionPt });
+      else {
+        a.sending = true;
+        a.progress = "Traduzindo a legenda…";
+        renderAttach();
+        try {
+          a.approved = await call(C.OPS.TRANSLATE_PREVIEW, { chatId, textPt: captionPt });
+        } catch (e) {
+          toast(e.message, "err");
+        }
+        if (S.attach !== a) return;
+        a.sending = false;
+        renderAttach();
+        return $("#attachCaption")?.focus();
+      }
+    }
+    a.sending = true;
+    const total = a.items.length;
+    let n = 0;
+    try {
+      while (a.items.length) {
+        const it = a.items[0];
+        n++;
+        a.sel = 0;
+        a.progress = total > 1 ? `Enviando ${n} de ${total}…` : "Enviando…";
+        renderAttach();
+        const uploadId = it.id;
+        await C.putMedia(`up:${uploadId}`, it.file, { chatId });
+        await call(C.OPS.SEND_FILE, { chatId, uploadId, type: it.type, filename: it.name, thumb: it.thumb, width: it.width, height: it.height, ...(n - 1 === captionAt ? extra : {}) });
+        URL.revokeObjectURL(it.url);
+        a.items.shift();
+        if (n - 1 === captionAt) {
+          a.caption = "";
+          a.approved = null;
+        }
+      }
+      if (S.attach === a) closeAttach();
+      $("#text")?.focus();
+    } catch (e) {
+      toast(e.message, "err");
+      if (S.attach !== a) return;
+      a.sending = false;
+      renderAttach();
+    }
+  }
+
+  function bindAttach() {
+    const fileIn = $("#fileIn");
+    $("#attachBtn").addEventListener("click", () => fileIn.click());
+    fileIn.addEventListener("change", () => {
+      addAttachments(fileIn.files);
+      fileIn.value = "";
+    });
+    const box = $("#attach");
+    box.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-at]");
+      if (!b || !S.attach) return;
+      const a = S.attach;
+      switch (b.dataset.at) {
+        case "close":
+          return closeAttach();
+        case "add":
+          return fileIn.click();
+        case "sel":
+          a.sel = Number(b.dataset.n);
+          return renderAttach();
+        case "rm":
+          URL.revokeObjectURL(a.items[Number(b.dataset.n)]?.url);
+          a.items.splice(Number(b.dataset.n), 1);
+          return a.items.length ? renderAttach() : closeAttach();
+        case "send":
+          return sendAttachments();
+      }
+    });
+    box.addEventListener("input", (e) => {
+      if (e.target.id !== "attachCaption" || !S.attach) return;
+      const hadApproval = Boolean(S.attach.approved);
+      S.attach.caption = e.target.value;
+      if (hadApproval && S.attach.approved.textPt !== S.attach.caption.trim()) {
+        S.attach.approved = null; // a legenda mudou: a tradução vista não vale mais
+        const pos = e.target.selectionStart;
+        renderAttach();
+        const inp = $("#attachCaption");
+        inp.focus();
+        inp.setSelectionRange(pos, pos);
+      }
+    });
+    box.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.target.id === "attachCaption") {
+        e.preventDefault();
+        sendAttachments();
+      }
+    });
+    // arrastar arquivos para a conversa
+    const thread = $("#thread");
+    const zone = $("#dropzone");
+    let depth = 0;
+    const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
+    thread.addEventListener("dragenter", (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth++;
+      zone.hidden = !composerState().ok;
+    });
+    thread.addEventListener("dragover", (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = composerState().ok ? "copy" : "none";
+    });
+    thread.addEventListener("dragleave", (e) => {
+      if (!hasFiles(e)) return;
+      if (--depth <= 0) (depth = 0), (zone.hidden = true);
+    });
+    thread.addEventListener("drop", (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      zone.hidden = true;
+      if (!S.attach?.sending) addAttachments(e.dataTransfer.files);
+    });
+  }
+
+  // colar print ou arquivo (Ctrl+V) em qualquer lugar da conversa aberta
+  document.addEventListener("paste", (e) => {
+    if (!S.current || !$("#composer") || e.target.closest?.("#side, .trpop, dialog")) return;
+    const files = [...(e.clipboardData?.items || [])].filter((i) => i.kind === "file").map((i) => i.getAsFile()).filter(Boolean);
+    if (!files.length || S.attach?.sending) return;
+    e.preventDefault();
+    addAttachments(files);
+  });
+
   // Esc fecha o popover de tradução ou a prévia (registrado uma vez só)
   document.addEventListener("keydown", (e) => {
     if (viewer.open) {
@@ -1604,7 +1875,9 @@
       return;
     }
     if (e.key !== "Escape") return;
-    if (S.current && S.trOpen) {
+    if (S.attach) {
+      if (!S.attach.sending) closeAttach();
+    } else if (S.current && S.trOpen) {
       S.trOpen = false;
       renderHeader();
     } else if (S.current && S.preview) closePreview(false);

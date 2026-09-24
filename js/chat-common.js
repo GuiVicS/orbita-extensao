@@ -42,6 +42,7 @@
     QR_RUN: "qr.run", // resposta rápida: envia a sequência
     QR_CANCEL: "qr.cancel",
     DELETE_MESSAGE: "message.delete", // apagar para mim / para todos
+    SEND_FILE: "chat.sendFile", // anexo colado, arrastado ou escolhido (foto, vídeo, documento…)
   };
 
   // Módulo ligado/desligado em Opções → Módulos (padrão: ligado).
@@ -111,6 +112,8 @@
     MEDIA_CHUNK: "mediaChunk",
     QR: "qr", // repassa um comando ao envio de respostas rápidas (js/quick-replies-page.js)
     DELETE_MESSAGE: "deleteMessage",
+    UPLOAD_CHUNK: "uploadChunk", // pedaço de um anexo (a porta tem limite de tamanho)
+    SEND_FILE: "sendFile", // envia o anexo remontado com os pedaços
   };
 
   // O WhatsApp só deixa "apagar para todos" as suas mensagens, até cerca de
@@ -150,6 +153,8 @@
     if (existing.revoked) merged.text = existing.text; // mantém o que foi lido antes de apagar
     for (const k of ["translatedText", "translationStatus", "lang", "textPt"]) if (existing[k] !== undefined && incoming[k] === undefined) merged[k] = existing[k];
     if (existing.audio || incoming.audio) merged.audio = { ...(existing.audio || {}), ...(incoming.audio || {}) };
+    // o evento do WhatsApp pode chegar sem a miniatura que já temos (anexo enviado daqui)
+    if (existing.media && incoming.media) merged.media = { ...existing.media, ...Object.fromEntries(Object.entries(incoming.media).filter(([, v]) => v !== undefined)) };
     // se o texto original mudou (mensagem editada), a tradução antiga não vale mais
     if (existing.text !== undefined && incoming.text !== undefined && existing.text !== incoming.text && !existing.revoked) {
       merged.edited = true;
@@ -313,6 +318,13 @@
     return req(db.transaction("mediaCache").objectStore("mediaCache").get(key));
   }
 
+  async function deleteMedia(key) {
+    const db = await openDb();
+    const tx = db.transaction("mediaCache", "readwrite");
+    tx.objectStore("mediaCache").delete(key);
+    await txDone(tx);
+  }
+
   async function putMedia(key, blob, extra = {}) {
     const db = await openDb();
     const tx = db.transaction("mediaCache", "readwrite");
@@ -407,7 +419,7 @@
   globalThis.OrbitaChat = {
     CHANNEL, PORT_TAB, PORT_UI, OPS, EVENTS, TAB_CMDS,
     REVOKE_WINDOW_MS, canRevoke, getMessage, deleteMessageRecord,
-    moduleEnabled, SETTINGS_KEY, DEFAULT_SETTINGS, loadSettings, saveSettings, contactLangOf, sourceText, getMedia, putMedia, AI_VOICE_NOTICE,
+    moduleEnabled, SETTINGS_KEY, DEFAULT_SETTINGS, loadSettings, saveSettings, contactLangOf, sourceText, getMedia, putMedia, deleteMedia, AI_VOICE_NOTICE,
     digits, phoneVariants, formatPhone, mergeMessage, previewOf,
     DB_NAME, openDb, getChat, listChats, updateChat, upsertMessages, patchMessage, messagesPage, countMessages, getMeta, setMeta,
     openMainDbReadOnly, loadClientIndex, findClient,

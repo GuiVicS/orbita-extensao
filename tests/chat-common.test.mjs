@@ -27,6 +27,15 @@ test("ack nunca regride e apagada continua apagada", () => {
   assert.equal(m.text, "x");
 });
 
+test("miniatura do anexo enviado não some com o evento do WhatsApp", () => {
+  const sent = { id: "1", text: "", media: { kind: "image", mime: "image/png", size: 10, thumb: "AAAA", width: 320, height: 200 } };
+  const ev = { id: "1", text: "", media: { kind: "image", mime: "image/png", size: 10, thumb: undefined, width: undefined, height: undefined, gif: false } };
+  const m = C.mergeMessage(sent, ev);
+  assert.equal(m.media.thumb, "AAAA");
+  assert.equal(m.media.width, 320);
+  assert.equal(C.mergeMessage(sent, { id: "1", media: { kind: "image", thumb: "BBBB" } }).media.thumb, "BBBB");
+});
+
 test("edição invalida a tradução", () => {
   const m = C.mergeMessage({ id: "1", text: "Hi", translatedText: "Oi", translationStatus: "done" }, { id: "1", text: "Hello" });
   assert.equal(m.edited, true);

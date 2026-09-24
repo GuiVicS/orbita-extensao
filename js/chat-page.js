@@ -156,6 +156,7 @@
 
   const CHUNK = 4 * 1024 * 1024;
   const pendingMedia = new Map(); // id → Blob, enquanto os pedaços são transferidos
+  const pendingUploads = new Map(); // id → { parts: Uint8Array[] }, anexos chegando das Conversas
 
   async function run(cmd) {
     if (cmd.op !== "status" && !ready()) throw new Error("O WhatsApp Web ainda está carregando.");
@@ -210,6 +211,44 @@
           delete command.file;
         }
         return qrCall(command, cmd.timeoutMs || 300000);
+      }
+      case "uploadChunk": {
+        // anexo das Conversas chegando em pedaços (base64), remontado no sendFile
+        const bin = atob(cmd.data);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const up = pendingUploads.get(cmd.id) || { parts: [], timer: 0 };
+        clearTimeout(up.timer);
+        up.timer = setTimeout(() => pendingUploads.delete(cmd.id), 5 * 60000);
+        up.parts[cmd.index] = bytes;
+        pendingUploads.set(cmd.id, up);
+        return true;
+      }
+      case "sendFile": {
+        const up = pendingUploads.get(cmd.uploadId);
+        pendingUploads.delete(cmd.uploadId);
+        clearTimeout(up?.timer);
+        const parts = up?.parts || [];
+        if (parts.length !== cmd.chunks || [...parts].some((p) => !p)) throw new Error("O arquivo não chegou inteiro ao WhatsApp Web. Tente de novo.");
+        const file = new File(parts, cmd.filename || "arquivo", { type: cmd.mime || "application/octet-stream" });
+        const o = { createChat: true, waitForAck: false, type: cmd.type, filename: cmd.filename, mimetype: file.type };
+        if (cmd.caption && cmd.type !== "audio") o.caption = cmd.caption;
+        if (cmd.type === "audio") o.isPtt = false;
+        const res = await chat.sendFileMessage(cmd.chatId, file, o);
+        const result = await Promise.race([res?.sendMsgResult, new Promise((r) => setTimeout(() => r({ timeout: true }), 120000))]).catch(() => null);
+        const code = result?.messageSendResult ?? (typeof result === "string" ? result : undefined);
+        if (code !== undefined && code !== "OK" && code !== WPP()?.whatsapp?.enums?.SendMsgResult?.OK) throw new Error(`O WhatsApp recusou o arquivo (${String(code)}).`);
+        let msg = null;
+        try {
+          msg = serializeMessage(chat.getMessageById ? await chat.getMessageById(ser(res?.id)) : null);
+        } catch {}
+        if (msg) return msg;
+        const fallback = { id: ser(res?.id), chatId: cmd.chatId, fromMe: true, ts: Date.now(), type: cmd.type === "audio" ? "audio" : "other", rawType: cmd.type, text: cmd.caption || "", ack: 0, revoked: false };
+        if (cmd.type === "audio") fallback.audio = { duration: 0, ptt: false };
+        else fallback.label = LABELS[cmd.type] || "Mídia";
+        if (cmd.type === "document") fallback.filename = cmd.filename || "";
+        if (MEDIA_KINDS[cmd.type]) fallback.media = { kind: MEDIA_KINDS[cmd.type], mime: file.type, size: file.size };
+        return fallback;
       }
       case "profilePic": {
         // pode ir ao servidor do WhatsApp; devolve null quando a pessoa não tem foto

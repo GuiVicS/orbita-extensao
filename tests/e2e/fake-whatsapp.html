@@ -63,7 +63,9 @@ const FAKE = {
       // como o WA-JS real: em texto (data URL), o tipo com parâmetros ("audio/ogg; codecs=opus") é recusado
       if (typeof file === "string" && !/^data:[\w.+-]+\/[\w.+-]+;base64,/.test(file)) throw "invalid_data_url";
       const magic = file instanceof Blob ? await file.slice(0, 4).text() : atob(file.slice(file.indexOf(",") + 1, file.indexOf(",") + 9)).slice(0, 4);
-      const m = { ...mk(id, `f${++sent}`, true, "", Date.now() / 1000 | 0, 1), type: o.isPtt ? "ptt" : "audio", body: undefined, duration: 2 };
+      const type = o.type && o.type !== "audio" ? o.type : o.isPtt ? "ptt" : "audio";
+      const m = { ...mk(id, `f${++sent}`, true, "", Date.now() / 1000 | 0, 1), type, body: undefined, duration: 2, caption: o.caption, mimetype: o.mimetype, filename: o.filename, size: file.size };
+      if (file instanceof Blob) (window.__files ||= []).push({ type: o.type, name: file.name, mime: file.type, size: file.size, caption: o.caption, magic, sum: [...new Uint8Array(await file.arrayBuffer())].reduce((a, b) => (a + b) % 1000003, 0) });
       window.__lastFile = { isPtt: o.isPtt, type: o.type, mime: o.mimetype, head: typeof file === "string" ? file.slice(0, 40) : `File ${file.name} ${file.type}`, oggMagic: magic === "OggS" };
       store[id].push(m);
       setTimeout(() => (handlers["chat.new_message"] || []).forEach((f) => f(m)), 300);

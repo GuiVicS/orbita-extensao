@@ -540,6 +540,58 @@
     }
   }
 
+  // Texto que pode sair (mensagem ou legenda). Falha segura: com a tradução
+  // ligada, só sai um texto traduzido pela própria extensão — nunca o português
+  // digitado, nem por engano.
+  async function outgoingText(chatId, text, textPt, skipPreview) {
+    const chat = await C.getChat(chatId);
+    if (!chat?.translation?.enabled) return { text, extra: undefined };
+    textPt = String(textPt || "");
+    if (!textPt.trim()) throw new Error("Tradução ligada: escreva a mensagem em português para ser traduzida.");
+    if (skipPreview) {
+      const settings = await C.loadSettings();
+      if (settings.requirePreview) throw new Error("A prévia da tradução é obrigatória (veja as preferências das Conversas).");
+      text = (await preview(chatId, textPt)).translated;
+    } else {
+      const p = await C.getMeta(`preview:${chatId}`);
+      if (!p || p.textPt !== textPt || p.translated !== text) throw new Error("A tradução mudou ou expirou. Gere a prévia de novo antes de enviar.");
+    }
+    return { text, extra: { textPt, translatedFrom: textPt, lang: C.contactLangOf(chat, await C.loadSettings()) } };
+  }
+
+  // Anexo guardado pelo painel no cache de mídia ("up:<id>"). A porta do Chrome
+  // tem limite de tamanho: o arquivo vai em pedaços e é remontado na aba.
+  const UPLOAD_CHUNK = 4 * 1024 * 1024;
+  const UPLOAD_MAX = 100 * 1024 * 1024;
+  const FILE_TYPES = new Set(["image", "video", "audio", "document"]);
+  async function sendFile(req) {
+    if (!status.ready) throw new Error("Abra o WhatsApp Web em uma aba para enviar.");
+    const rec = await C.getMedia(`up:${req.uploadId}`);
+    if (!rec?.blob || rec.chatId !== req.chatId) throw new Error("Anexo não encontrado. Anexe o arquivo de novo.");
+    const blob = rec.blob;
+    if (blob.size > UPLOAD_MAX) throw new Error("Arquivo grande demais (máx. 100 MB).");
+    const type = FILE_TYPES.has(req.type) ? req.type : "document";
+    let caption = String(req.caption || "");
+    let extra;
+    if (type !== "audio" && (caption.trim() || String(req.captionPt || "").trim())) ({ text: caption, extra } = await outgoingText(req.chatId, caption, req.captionPt, req.skipPreview));
+    const chunks = Math.max(1, Math.ceil(blob.size / UPLOAD_CHUNK));
+    for (let i = 0; i < chunks; i++) {
+      const bytes = new Uint8Array(await blob.slice(i * UPLOAD_CHUNK, (i + 1) * UPLOAD_CHUNK).arrayBuffer());
+      let bin = "";
+      for (let j = 0; j < bytes.length; j += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(j, j + 0x8000));
+      await exec({ op: C.TAB_CMDS.UPLOAD_CHUNK, id: req.uploadId, index: i, data: btoa(bin) }, 60000);
+    }
+    const msg = await exec({ op: C.TAB_CMDS.SEND_FILE, chatId: req.chatId, uploadId: req.uploadId, chunks, type, mime: blob.type || rec.mime, filename: String(req.filename || "arquivo"), caption: caption.trim() || undefined }, 300000);
+    // miniatura feita no painel, caso o WhatsApp ainda não tenha gerado a dele
+    if (msg.media && !msg.media.thumb && req.thumb) Object.assign(msg.media, { thumb: req.thumb, width: msg.media.width || req.width, height: msg.media.height || req.height });
+    if (extra) Object.assign(msg, extra);
+    await C.putMedia(msg.id, blob); // abre no visualizador sem baixar de novo
+    await C.deleteMedia(`up:${req.uploadId}`).catch(() => {});
+    await onIncoming(msg, { chatId: req.chatId });
+    if (extra) await C.setMeta(`preview:${req.chatId}`, null);
+    return msg;
+  }
+
   // ------------------------------------------------------ pedidos do painel
   async function handle(req) {
     if (req.op !== C.OPS.STATUS && !(await C.moduleEnabled())) throw new Error("As Conversas estão desligadas em Opções → Módulos.");
@@ -596,24 +648,7 @@
       }
 
       case C.OPS.SEND_TEXT: {
-        let text = String(req.text || "");
-        let extra;
-        const chat = await C.getChat(req.chatId);
-        if (chat?.translation?.enabled) {
-          // Falha segura: com a tradução ligada, só sai um texto traduzido pela
-          // própria extensão — nunca o português digitado, nem por engano.
-          const textPt = String(req.textPt || "");
-          if (!textPt.trim()) throw new Error("Tradução ligada: escreva a mensagem em português para ser traduzida.");
-          if (req.skipPreview) {
-            const settings = await C.loadSettings();
-            if (settings.requirePreview) throw new Error("A prévia da tradução é obrigatória (veja as preferências das Conversas).");
-            text = (await preview(req.chatId, textPt)).translated;
-          } else {
-            const p = await C.getMeta(`preview:${req.chatId}`);
-            if (!p || p.textPt !== textPt || p.translated !== text) throw new Error("A tradução mudou ou expirou. Gere a prévia de novo antes de enviar.");
-          }
-          extra = { textPt, translatedFrom: textPt, lang: C.contactLangOf(chat, await C.loadSettings()) };
-        }
+        const { text, extra } = await outgoingText(req.chatId, String(req.text || ""), req.textPt, req.skipPreview);
         if (!text.trim()) throw new Error("Mensagem vazia.");
         if (text.length > 65000) throw new Error("Mensagem longa demais.");
         const msg = await exec({ op: C.TAB_CMDS.SEND_TEXT, chatId: req.chatId, text }, 60000);
@@ -622,6 +657,9 @@
         if (extra) await C.setMeta(`preview:${req.chatId}`, null); // uma prévia vale para um envio
         return msg;
       }
+
+      case C.OPS.SEND_FILE:
+        return sendFile(req);
 
       case C.OPS.TRANSLATE_PREVIEW:
         if (!String(req.textPt || "").trim()) throw new Error("Mensagem vazia.");
