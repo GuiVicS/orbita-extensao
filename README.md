@@ -4,6 +4,10 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.8.2
+
+- **Fish Audio: “créditos acabados” em contas sem plano pago da API.** O modelo padrão agora é o `s2.1-pro-free` (os modelos `s2.1-pro`, `s2-pro` e `s1` exigem créditos pagos e respondiam 402). Se o modelo escolhido responder 402, a voz é gerada com o gratuito, que passa a ser o padrão, e um aviso explica a troca. As Opções indicam qual modelo exige créditos.
+
 ## Novidades da 1.8.1
 
 - **Conversas em tela cheia**: botão no topo da lista de conversas (ou Esc para sair) — só o chat ocupa o monitor, sem o menu e o cabeçalho do painel. Se o navegador não permitir, o chat abre numa janela só dele.

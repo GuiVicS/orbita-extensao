@@ -834,6 +834,7 @@
     setVoice({ stage: "generating", textPt, lang: translating() ? C.contactLangOf(S.current, S.settings) : S.settings.myLang });
     try {
       const g = await call(C.OPS.VOICE_PREVIEW, { chatId, textPt, fresh });
+      if (g.notice) toast(g.notice);
       // o Fish devolve MP3; aqui vira OGG/Opus, o formato da mensagem de voz do WhatsApp
       const mp3 = await C.getMedia(g.mp3Key);
       const ogg = await A.toOggOpus(mp3.blob);

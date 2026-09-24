@@ -14,7 +14,10 @@
 
   const URL_TTS = "https://api.fish.audio/v1/tts";
   const SECRETS_KEY = "orbita:chat:secrets";
-  const DEFAULT_MODEL = "s2.1-pro";
+  // O "-free" funciona em contas sem créditos pagos da API; os demais (s2.1-pro,
+  // s2-pro, s1) respondem 402 nessas contas.
+  const FREE_MODEL = "s2.1-pro-free";
+  const DEFAULT_MODEL = FREE_MODEL;
   const TIMEOUT_MS = 60000;
 
   const TE = globalThis.OrbitaTranslate?.TranslateError || Error;
@@ -34,15 +37,27 @@
 
   function httpError(status) {
     if (status === 401 || status === 403) return new VoiceError("AUTH", "Chave do Fish Audio inválida ou sem permissão.");
-    if (status === 402) return new VoiceError("INSUFFICIENT_CREDIT", "Os créditos do Fish Audio acabaram. Recarregue a conta para gerar voz.");
+    if (status === 402) return new VoiceError("INSUFFICIENT_CREDIT", "O Fish Audio recusou por falta de créditos pagos da API (HTTP 402). Use o modelo s2.1-pro-free ou recarregue a conta.");
     if (status === 429) return new VoiceError("RATE_LIMIT", "Limite de uso do Fish Audio atingido. Tente de novo em instantes.", { retryable: true });
     if (status === 404) return new VoiceError("VOICE_NOT_FOUND", "A voz configurada não existe mais no Fish Audio.");
     if (status >= 500) return new VoiceError("PROVIDER", `O Fish Audio está instável (HTTP ${status}).`, { retryable: true });
     return new VoiceError("PROVIDER", `O Fish Audio recusou o pedido (HTTP ${status}).`);
   }
 
-  // Gera a fala de `text` com a voz `voiceId`. Devolve um Blob MP3.
-  async function tts({ text, voiceId, model = DEFAULT_MODEL, speed = 1 }) {
+  // Gera a fala de `text` com a voz `voiceId`. Devolve { blob (MP3), model, fellBack }.
+  // Se o modelo escolhido exigir créditos pagos (402), tenta de novo com o
+  // modelo gratuito: fellBack = true avisa quem chamou para salvar a troca.
+  async function tts(opts) {
+    const model = opts.model || DEFAULT_MODEL;
+    try {
+      return { blob: await requestTts({ ...opts, model }), model, fellBack: false };
+    } catch (e) {
+      if (e.code !== "INSUFFICIENT_CREDIT" || model === FREE_MODEL) throw e;
+      return { blob: await requestTts({ ...opts, model: FREE_MODEL }), model: FREE_MODEL, fellBack: true };
+    }
+  }
+
+  async function requestTts({ text, voiceId, model, speed = 1 }) {
     const clean = String(text || "").trim();
     if (!clean) throw new VoiceError("PROVIDER", "Texto vazio.");
     const { fishApiKey } = await secrets();
@@ -82,5 +97,5 @@
     return `tts:${[...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
   }
 
-  globalThis.OrbitaVoice = { tts, cacheKey, secrets, VoiceError, SECRETS_KEY, DEFAULT_MODEL };
+  globalThis.OrbitaVoice = { tts, cacheKey, secrets, VoiceError, SECRETS_KEY, DEFAULT_MODEL, FREE_MODEL };
 })();

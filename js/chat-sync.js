@@ -527,12 +527,22 @@
         if (!text.trim()) throw new Error("Mensagem vazia.");
         if (text.length > settings.maxTtsChars) throw new Error(`Texto longo demais para um áudio (máx. ${settings.maxTtsChars} caracteres).`);
         const V = globalThis.OrbitaVoice;
-        const opts = { text, voiceId: settings.fishVoiceId, model: settings.fishModel, speed: settings.voiceSpeed };
-        const mp3Key = await V.cacheKey(opts);
-        if (req.fresh || !(await C.getMedia(mp3Key))?.blob) await C.putMedia(mp3Key, await V.tts(opts), { text });
+        const opts = { text, voiceId: settings.fishVoiceId, model: settings.fishModel || V.DEFAULT_MODEL, speed: settings.voiceSpeed };
+        let mp3Key = await V.cacheKey(opts);
+        let notice = null;
+        if (req.fresh || !(await C.getMedia(mp3Key))?.blob) {
+          const r = await V.tts(opts);
+          if (r.fellBack) {
+            // o modelo escolhido exige créditos pagos: passa a usar o gratuito
+            await C.saveSettings({ fishModel: r.model });
+            mp3Key = await V.cacheKey({ ...opts, model: r.model });
+            notice = `O modelo ${opts.model} exige créditos pagos no Fish Audio; a voz foi gerada com o ${r.model}, que passa a ser o padrão.`;
+          }
+          await C.putMedia(mp3Key, r.blob, { text });
+        }
         const genId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
         await C.setMeta(`voice:${req.chatId}`, { genId, text, textPt, lang, createdAt: Date.now() });
-        return { genId, mp3Key, text, textPt, lang, maxVoiceSec: settings.maxVoiceSec };
+        return { genId, mp3Key, text, textPt, lang, maxVoiceSec: settings.maxVoiceSec, notice };
       }
 
       case C.OPS.SEND_AUDIO: {

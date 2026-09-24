@@ -27,6 +27,8 @@ const installFakes = () => sw.evaluate(() => {
     if (url === "https://api.fish.audio/v1/tts") {
       globalThis.__fish.push({ headers: init.headers, body: JSON.parse(init.body) });
       if (globalThis.__fishStatus !== 200) return new Response("{}", { status: globalThis.__fishStatus });
+      // conta sem créditos pagos: só o modelo "-free" funciona (como no fluxo do n8n)
+      if (init.headers.model !== "s2.1-pro-free") return new Response("{}", { status: 402 });
       return new Response(wav(2), { status: 200, headers: { "content-type": "audio/mpeg" } });
     }
     if (url.includes("/audio/transcriptions")) return new Response(JSON.stringify({ text: "Claro, te ligo amanhã às 10.", language: "portuguese" }), { status: 200 });
@@ -43,7 +45,7 @@ dash.on("pageerror", (e) => errors.push("dash: " + e.message));
 await dash.goto(`chrome-extension://${id}/dashboard.html#/`);
 await dash.evaluate(() => chrome.storage.local.set({
   "orbita:ai": { provider: "openai", keys: { openai: "sk-test", groq: "gsk_test" }, models: { openai: "gpt-5" } },
-  "orbita:chat:settings": { privacyAccepted: true, fishVoiceId: "voz-do-joao" },
+  "orbita:chat:settings": { privacyAccepted: true, fishVoiceId: "voz-do-joao", fishModel: "s2.1-pro" }, // salvo antes da correção
   "orbita:chat:secrets": { fishApiKey: "fish_secret" },
 }));
 const wa = await ctx.newPage();
@@ -72,7 +74,13 @@ await f.locator("#pvSend", { hasText: "Gerar voz" }).waitFor({ timeout: 15000 })
 await f.locator("#pvSend").click();
 await f.locator("#vcSend").waitFor({ timeout: 20000 });
 console.log("painel:", (await f.locator(".pv").innerText()).replace(/\s+/g, " "));
-const fishReq = await sw.evaluate(() => globalThis.__fish[0]);
+const fishCalls = await sw.evaluate(() => globalThis.__fish.map((f) => f.headers.model));
+console.log("modelos tentados:", fishCalls);
+assert.deepEqual(fishCalls, ["s2.1-pro", "s2.1-pro-free"], "402 no pago → gerou com o gratuito");
+const savedModel = await dash.evaluate(async () => (await chrome.storage.local.get("orbita:chat:settings"))["orbita:chat:settings"].fishModel);
+console.log("modelo salvo:", savedModel);
+assert.equal(savedModel, "s2.1-pro-free");
+const fishReq = await sw.evaluate(() => globalThis.__fish.at(-1));
 console.log("pedido ao Fish:", JSON.stringify(fishReq));
 assert.equal(fishReq.body.text, "Sure, I'll call you tomorrow at 10.", "voz gerada do texto traduzido aprovado");
 assert.equal(fishReq.body.reference_id, "voz-do-joao");

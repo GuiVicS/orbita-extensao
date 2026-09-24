@@ -104,11 +104,15 @@
     const s = await C.loadSettings();
     $("vStatus").textContent = "Gerando…";
     try {
-      const mp3 = await V.tts({ text: $("vTest").value, voiceId: s.fishVoiceId, model: s.fishModel, speed: s.voiceSpeed });
-      $("vAudio").src = URL.createObjectURL(mp3);
+      const r = await V.tts({ text: $("vTest").value, voiceId: s.fishVoiceId, model: s.fishModel, speed: s.voiceSpeed });
+      if (r.fellBack) {
+        await C.saveSettings({ fishModel: r.model });
+        $("c-fishModel").value = r.model;
+      }
+      $("vAudio").src = URL.createObjectURL(r.blob);
       $("vAudio").hidden = false;
       $("vAudio").play().catch(() => {});
-      $("vStatus").textContent = s.fishVoiceId ? "Voz configurada." : "Sem ID de voz: o Fish Audio usou uma voz padrão.";
+      $("vStatus").textContent = (s.fishVoiceId ? "Voz configurada." : "Sem ID de voz: o Fish Audio usou uma voz padrão.") + (r.fellBack ? ` O modelo ${s.fishModel} exige créditos pagos; troquei para o ${r.model}.` : "");
     } catch (e) {
       $("vStatus").textContent = e.message;
     }

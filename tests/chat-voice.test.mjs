@@ -19,14 +19,26 @@ beforeEach(() => {
 
 test("requisição conforme a documentação do Fish Audio", async () => {
   responder = () => audio();
-  const blob = await V.tts({ text: " Sure, I'll call you at 10. ", voiceId: "voz123", speed: 1.1 });
-  assert.equal(blob.type, "audio/mpeg");
+  const r = await V.tts({ text: " Sure, I'll call you at 10. ", voiceId: "voz123", speed: 1.1 });
+  assert.equal(r.blob.type, "audio/mpeg");
+  assert.equal(r.fellBack, false);
   const c = calls[0];
   assert.equal(c.url, "https://api.fish.audio/v1/tts");
   assert.equal(c.init.headers.Authorization, "Bearer fish_x");
-  assert.equal(c.init.headers.model, "s2.1-pro");
+  assert.equal(c.init.headers.model, "s2.1-pro-free", "padrão = modelo gratuito (como no n8n)");
   assert.equal(c.init.headers["Content-Type"], "application/json");
   assert.deepEqual(c.body, { text: "Sure, I'll call you at 10.", format: "mp3", mp3_bitrate: 128, latency: "normal", normalize: true, reference_id: "voz123", prosody: { speed: 1.1 } });
+});
+
+test("402 no modelo pago: tenta o gratuito e avisa", async () => {
+  responder = () => audio(calls.at(-1).init.headers.model === "s2.1-pro" ? 402 : 200);
+  const r = await V.tts({ text: "Oi", voiceId: "v", model: "s2.1-pro" });
+  assert.deepEqual([r.model, r.fellBack], ["s2.1-pro-free", true]);
+  assert.deepEqual(calls.map((c) => c.init.headers.model), ["s2.1-pro", "s2.1-pro-free"]);
+  calls = [];
+  responder = () => audio(402);
+  await assert.rejects(V.tts({ text: "Oi", model: "s2.1-pro" }), { code: "INSUFFICIENT_CREDIT" });
+  assert.equal(calls.length, 2, "tenta o gratuito uma vez e para");
 });
 
 test("erros tipados", async () => {
@@ -36,7 +48,7 @@ test("erros tipados", async () => {
   }
   calls = [];
   responder = (n) => audio(n === 1 ? 429 : 200);
-  assert.ok(await V.tts({ text: "hi" }));
+  assert.ok((await V.tts({ text: "hi" })).blob);
   assert.equal(calls.length, 2, "uma nova tentativa no 429");
   storage = {};
   await assert.rejects(V.tts({ text: "hi" }), { code: "NOT_CONFIGURED" });

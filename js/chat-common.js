@@ -53,7 +53,7 @@
     transcribeOnOpen: true, // transcrever os áudios recebidos ao abrir a conversa
     maxAudioSec: 180, // áudios mais longos só com clique
     fishVoiceId: "", // reference_id da voz no Fish Audio (a chave fica em "orbita:chat:secrets")
-    fishModel: "s2.1-pro",
+    fishModel: "s2.1-pro-free", // igual ao que funciona em contas sem créditos pagos
     voiceSpeed: 1,
     maxTtsChars: 600, // texto máximo por áudio gerado
     maxVoiceSec: 60, // duração máxima do áudio gerado
