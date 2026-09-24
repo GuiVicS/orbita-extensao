@@ -61,6 +61,7 @@
     pause: '<rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/>',
     languages: '<path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/>',
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    pencil: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>',
     shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
   };
   // nomes dos idiomas em português, para a interface
@@ -939,50 +940,142 @@
   }
 
   // ------------------------------------------------------- painel do cliente
-  const idb = (r) => new Promise((res, rej) => ((r.onsuccess = () => res(r.result)), (r.onerror = () => rej(r.error))));
+  // Resumo do CRM editável: nome, etapa, tags, notas, IA e alerta. As gravações
+  // seguem o formato do CRM do painel (js/crm-edit.js).
+  const CRM = globalThis.OrbitaCrm;
+  const fmtWhen = (ts) => new Date(ts).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  let side = { phone: null, data: null, editingName: false };
 
   async function renderSide() {
-    const side = $("#side");
+    const box = $("#side");
     const c = S.current;
     if (!c || !S.sideOpen) {
-      side.hidden = true;
+      box.hidden = true;
       return;
     }
-    side.hidden = false;
-    const stage = stageOf(c);
-    let extra = "";
-    if (c.client) {
-      // detalhes lidos direto do banco do CRM (só leitura)
-      const db = await C.openMainDbReadOnly();
-      let record = null;
-      let appts = [];
-      if (db) {
-        try {
-          if (db.objectStoreNames.contains("crmClients")) record = await idb(db.transaction("crmClients").objectStore("crmClients").get(c.client.phone));
-          if (db.objectStoreNames.contains("appointments"))
-            appts = (await idb(db.transaction("appointments").objectStore("appointments").index("byPhone").getAll(c.client.phone))).filter((a) => a.start >= Date.now() - 36e5).sort((a, b) => a.start - b.start).slice(0, 3);
-        } catch {}
-        db.close();
+    box.hidden = false;
+    const phone = c.client?.phone || c.phone || null;
+    let d = null;
+    let err = null;
+    if (phone) {
+      try {
+        d = await CRM.load(phone);
+      } catch (e) {
+        err = e.message;
       }
-      if (S.current?.chatId !== c.chatId) return;
-      const tags = record?.tags || c.client.tags || [];
-      const notes = Array.isArray(record?.notes) ? [...record.notes].sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 4) : [];
-      extra = `<div class="sec"><h3>Etapa do funil</h3>${stage ? `<span class="stagepill"><i style="background:${esc(stage.color)}"></i>${esc(stage.name)}</span>` : `<span class="muted">Sem etapa</span>`}</div>
-        <div class="sec"><h3>Tags</h3>${tags.length ? `<div class="tags">${tags.map((t) => `<span>${esc(t)}</span>`).join("")}</div>` : `<span class="muted">Sem tags</span>`}</div>
-        <div class="sec"><h3>Próximos compromissos</h3>${appts.length ? appts.map((a) => `<div class="appt"><b>${esc(a.title || "Compromisso")}</b><small>${esc(new Date(a.start).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }))}</small></div>`).join("") : `<span class="muted">Nenhum</span>`}</div>
-        <div class="sec"><h3>Notas</h3>${notes.length ? notes.map((n) => `<div class="note">${n.ts ? `<small>${esc(new Date(n.ts).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }))}</small>` : ""}${esc(n.text || "")}</div>`).join("") : `<span class="muted">Nenhuma nota</span>`}</div>
-        <button class="btn" id="openCrm">${icon("external", 14)} Abrir no CRM</button>`;
-    } else {
-      extra = `<div class="sec"><span class="muted">${c.phone ? "Este contato não está nas suas listas, então não aparece no CRM." : "O WhatsApp não mostra o número deste contato, então não dá para ligá-lo ao CRM."}</span></div>`;
     }
-    side.innerHTML = `<div class="top">${avatar(c, stage)}<b>${esc(displayName(c))}</b><small>${esc(C.formatPhone(c.phone) || "")}</small>
-      ${c.pushname && c.pushname !== displayName(c) ? `<small style="display:block">~${esc(c.pushname)}</small>` : ""}</div>${extra}`;
-    $("#openCrm")?.addEventListener("click", () => {
-      const url = `#/crm?phone=${encodeURIComponent(c.client.phone)}`;
-      if (EMBED) parent.location.hash = url;
-      else location.href = `dashboard.html${url}`;
-    });
+    if (S.current?.chatId !== c.chatId) return;
+    side = { ...side, phone, data: d };
+    const stage = d?.stages.find((s) => s.id === d.stageId);
+    const name = d?.name || displayName(c);
+    let body = "";
+    if (!phone) body = `<div class="sec"><span class="muted">O WhatsApp não mostra o número deste contato, então não dá para ligá-lo ao CRM.</span></div>`;
+    else if (err) body = `<div class="sec"><span class="muted">${esc(err)}</span></div>`;
+    else if (!d.inLists)
+      body = `<div class="sec card"><h3>Fora do CRM</h3><span class="muted">Adicione para usar etapa, tags e notas. Entra na lista “${esc(CRM.WHATSAPP_LIST)}”.</span>
+        <input class="in" id="crmNewName" value="${esc(name)}" placeholder="Nome do cliente" aria-label="Nome do cliente">
+        <button class="btn primary" data-crm="add">${icon("check", 14)} Adicionar ao CRM</button></div>`;
+    else if (!d.modules.crm) body = `<div class="sec"><span class="muted">Ative o módulo CRM nas Opções da extensão para editar etapa, tags e notas por aqui.</span></div>`;
+    else {
+      const notes = d.history.filter((h) => h.kind === "note");
+      body = `${d.attention ? `<div class="sec alert"><b>${icon("alert", 13)} Precisa de atenção</b><span>${esc(d.attention.reason || "")}</span><button class="btn" data-crm="resolve">Resolvido</button></div>` : ""}
+        <div class="sec"><h3>Etapa do funil</h3><div class="stagesel"><i style="background:${esc(stage?.color || "#999")}"></i>
+          <select id="crmStage" aria-label="Etapa do funil">${d.stages.map((s) => `<option value="${esc(s.id)}" ${s.id === d.stageId ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></div></div>
+        <div class="sec"><h3>Tags</h3><div class="tags edit">${d.tags.map((t) => `<span>${esc(t)}<button data-crm="untag" data-tag="${esc(t)}" aria-label="Remover tag ${esc(t)}">${icon("x", 11)}</button></span>`).join("") || `<span class="muted">Sem tags</span>`}</div>
+          <input class="in" id="crmTag" list="crmTags" placeholder="Adicionar tag e Enter" aria-label="Adicionar tag"><datalist id="crmTags">${d.knownTags.filter((t) => !d.tags.some((x) => x.toLowerCase() === t.toLowerCase())).map((t) => `<option value="${esc(t)}">`).join("")}</datalist></div>
+        <div class="sec"><label class="swrow2"><span><b>IA responde este cliente</b><small>${d.autoReply ? "Ligada: se você responder, ela desliga sozinha." : "Desligada."}</small></span><input type="checkbox" id="crmAuto" ${d.autoReply ? "checked" : ""}></label></div>
+        <div class="sec"><h3>Notas</h3><textarea class="in" id="crmNote" rows="2" placeholder="Nova nota sobre o cliente…"></textarea>
+          <button class="btn" data-crm="note">${icon("check", 14)} Adicionar nota</button>
+          ${notes.slice(0, 20).map((n) => `<div class="note"><small>${esc(fmtWhen(n.ts))}<button class="link del" data-crm="delnote" data-id="${esc(n.id)}" aria-label="Excluir nota">excluir</button></small>${esc(n.text)}</div>`).join("") || `<span class="muted">Nenhuma nota</span>`}</div>
+        ${d.modules.agenda ? `<div class="sec"><h3>Próximos compromissos</h3>${d.appointments.length ? d.appointments.map((a) => `<div class="appt"><b>${esc(a.title || "Compromisso")}</b><small>${esc(fmtWhen(a.start))}</small></div>`).join("") : `<span class="muted">Nenhum</span>`}</div>` : ""}
+        <details class="sec hist"><summary>Histórico (${d.history.length})</summary>${d.history.slice(0, 15).map((h) => `<div class="note"><small>${esc(fmtWhen(h.ts))} · ${h.kind === "stage" ? "etapa" : h.kind === "note" ? "nota" : esc(h.kind)}</small>${esc(h.text)}</div>`).join("") || `<span class="muted">Vazio</span>`}</details>
+        <button class="btn" data-crm="open">${icon("external", 14)} Abrir no CRM</button>`;
+    }
+    const nameHtml = side.editingName
+      ? `<div class="namerow"><input class="in" id="crmName" value="${esc(name)}" aria-label="Nome do cliente"><button class="ibtn" data-crm="savename" aria-label="Salvar nome">${icon("check", 16)}</button></div>`
+      : `<b>${esc(name)}${d?.inLists ? ` <button class="ibtn inline" data-crm="editname" aria-label="Editar nome" title="Editar nome">${icon("pencil", 13)}</button>` : ""}</b>`;
+    box.innerHTML = `<div class="top">${avatar(c, stage)}${nameHtml}<small>${esc(C.formatPhone(c.phone) || "")}</small>
+      ${c.pushname && c.pushname !== name ? `<small style="display:block">~${esc(c.pushname)}</small>` : ""}
+      ${d?.lists?.length ? `<small style="display:block">Listas: ${esc(d.lists.join(", "))}</small>` : ""}</div>${body}`;
+    if (side.editingName) $("#crmName")?.focus();
   }
+
+  // Executa uma edição do CRM e atualiza o chat (vínculo, cor da etapa) e o painel.
+  async function crmDo(fn, ok) {
+    const chatId = S.current?.chatId;
+    try {
+      await fn(side.phone);
+      const chat = await call(C.OPS.CRM_CHANGED, { chatId });
+      if (S.current?.chatId === chatId && chat) S.current = { ...S.current, ...chat };
+      await loadStages().catch(() => {});
+      renderHeader();
+      if (ok) toast(ok);
+    } catch (e) {
+      toast(e.message, "err");
+    }
+    await renderSide();
+  }
+
+  $("#side").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-crm]");
+    if (!b || !side.phone) return;
+    const d = side.data;
+    switch (b.dataset.crm) {
+      case "add":
+        return crmDo((p) => CRM.addToCrm(p, $("#crmNewName").value || displayName(S.current)), "Adicionado ao CRM.");
+      case "editname":
+        side.editingName = true;
+        return renderSide();
+      case "savename":
+        side.editingName = false;
+        return crmDo((p) => CRM.rename(p, $("#crmName").value), "Nome atualizado.");
+      case "untag":
+        return crmDo((p) => CRM.setTags(p, d.tags.filter((t) => t !== b.dataset.tag)));
+      case "note": {
+        const text = $("#crmNote").value;
+        if (!text.trim()) return $("#crmNote").focus();
+        return crmDo((p) => CRM.addNote(p, text), "Nota adicionada.");
+      }
+      case "delnote":
+        if (!confirm("Excluir esta nota?")) return;
+        return crmDo((p) => CRM.removeHistory(p, b.dataset.id));
+      case "resolve":
+        return crmDo((p) => CRM.clearAttention(p));
+      case "open": {
+        const url = `#/crm?phone=${encodeURIComponent(side.phone)}`;
+        if (EMBED) {
+          if (expanded) setExpanded(false);
+          parent.location.hash = url;
+        } else location.href = `dashboard.html${url}`;
+      }
+    }
+  });
+  $("#side").addEventListener("change", (e) => {
+    if (!side.phone) return;
+    if (e.target.id === "crmStage") crmDo((p) => CRM.setStage(p, e.target.value), "Etapa atualizada.");
+    if (e.target.id === "crmAuto") crmDo((p) => CRM.setAutoReply(p, e.target.checked));
+  });
+  $("#side").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && e.target.id === "crmTag" && e.target.value.trim()) {
+      e.preventDefault();
+      const t = e.target.value;
+      crmDo((p) => CRM.setTags(p, [...side.data.tags, t]));
+    } else if (e.key === "Enter" && e.target.id === "crmName") {
+      e.preventDefault();
+      side.editingName = false;
+      crmDo((p) => CRM.rename(p, e.target.value), "Nome atualizado.");
+    } else if (e.key === "Escape" && side.editingName) {
+      e.stopPropagation();
+      side.editingName = false;
+      renderSide();
+    }
+  });
+  // alterações feitas no CRM do painel aparecem aqui na hora
+  try {
+    new BroadcastChannel("orbita-data").onmessage = (ev) => {
+      if (["crm", "lists"].includes(ev.data?.topic) && S.current && S.sideOpen && !side.editingName && !document.activeElement?.closest?.("#side")) renderSide();
+    };
+  } catch {}
 
   // ------------------------------------------------------------ ao vivo
   let port = null;

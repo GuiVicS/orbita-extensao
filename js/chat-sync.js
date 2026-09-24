@@ -498,6 +498,13 @@
         return { key: media.key, mime: media.mime, size: media.size };
       }
 
+      case C.OPS.CRM_CHANGED: {
+        clientIndex = null; // relê contatos/etapas/tags do CRM
+        const chat = await touchChat({ chatId: String(req.chatId) });
+        broadcast(C.EVENTS.CHAT_UPDATED, { chat });
+        return chat;
+      }
+
       case C.OPS.TRANSCRIBE:
         queueTranscription(String(req.messageId), { front: true, manual: true });
         return true;
