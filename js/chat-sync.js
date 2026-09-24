@@ -136,6 +136,86 @@
     });
     broadcast(change.isNew ? C.EVENTS.MESSAGE_NEW : C.EVENTS.MESSAGE_UPDATED, { message: change.message });
     broadcast(C.EVENTS.CHAT_UPDATED, { chat });
+    if (chat?.translation?.enabled && needsTranslation(change.message)) queueTranslation(change.message.id);
+  }
+
+  // ------------------------------------------------------ tradução
+  const T = globalThis.OrbitaTranslate;
+  const needsTranslation = (m) => !m.fromMe && !m.revoked && Boolean(m.text?.trim()) && (!m.translationStatus || m.translationStatus === "stale");
+
+  // Fila das mensagens recebidas: no máximo 2 traduções ao mesmo tempo, e a
+  // mesma mensagem nunca entra duas vezes.
+  const queue = [];
+  const queued = new Set();
+  let active = 0;
+  function queueTranslation(id, { front = false } = {}) {
+    if (queued.has(id)) return;
+    queued.add(id);
+    front ? queue.unshift(id) : queue.push(id);
+    pump();
+  }
+  function pump() {
+    while (active < 2 && queue.length) {
+      const id = queue.shift();
+      active++;
+      translateIncoming(id)
+        .catch(() => {})
+        .finally(() => {
+          active--;
+          queued.delete(id);
+          pump();
+        });
+    }
+  }
+
+  async function contextFor(chatId, beforeTs, n) {
+    if (!n) return [];
+    const msgs = await C.messagesPage(chatId, { beforeTs, limit: n });
+    return msgs.filter((m) => !m.revoked && m.text).map((m) => ({ fromMe: m.fromMe, text: m.textPt || m.translatedText || m.text }));
+  }
+
+  async function translateIncoming(id) {
+    const settings = await C.loadSettings();
+    let msg = await C.patchMessage(id, (m) => (needsTranslation(m) ? { ...m, translationStatus: "pending", translationError: undefined } : null));
+    if (!msg) return;
+    broadcast(C.EVENTS.MESSAGE_UPDATED, { message: msg });
+    try {
+      const r = await T.translate({ text: msg.text, from: "auto", to: settings.myLang, tone: "neutral", context: await contextFor(msg.chatId, msg.ts, settings.contextMessages), glossary: settings.glossary });
+      msg = await C.patchMessage(id, (m) => ({ ...m, translatedText: r.text, lang: r.detectedLang || m.lang, translationStatus: "done" }));
+      // se for a última mensagem da conversa, a prévia da lista passa a ser a tradução
+      const last = await C.updateChat(msg.chatId, (c) => (c?.lastMessageId === id ? { ...c, lastPreview: C.previewOf(msg) } : null));
+      if (last) broadcast(C.EVENTS.CHAT_UPDATED, { chat: last });
+      // guarda o idioma detectado do contato (usado quando o idioma está em "automático")
+      if (r.detectedLang && r.detectedLang !== settings.myLang) {
+        const chat = await C.updateChat(msg.chatId, (c) => (c && c.translation?.detectedLang !== r.detectedLang ? { ...c, translation: { ...c.translation, detectedLang: r.detectedLang } } : null));
+        if (chat) broadcast(C.EVENTS.CHAT_UPDATED, { chat });
+      }
+    } catch (e) {
+      msg = await C.patchMessage(id, (m) => ({ ...m, translationStatus: "failed", translationError: e.message, translationErrorCode: e.code }));
+    }
+    if (msg) broadcast(C.EVENTS.MESSAGE_UPDATED, { message: msg });
+  }
+
+  function queueChat(messages) {
+    // da mais nova para a mais antiga: o que está na tela primeiro
+    for (const m of [...messages].reverse()) if (needsTranslation(m)) queueTranslation(m.id);
+  }
+
+  // Prévia do envio: PT → idioma do contato, e a volta para PT para conferir.
+  // A tradução aprovada fica guardada (no banco, o service worker pode dormir);
+  // só um texto idêntico a ela pode ser enviado depois.
+  async function preview(chatId, textPt) {
+    const settings = await C.loadSettings();
+    const chat = await C.getChat(chatId);
+    if (!chat?.translation?.enabled) throw new Error("A tradução não está ligada nesta conversa.");
+    const to = C.contactLangOf(chat, settings);
+    const tone = chat.translation.tone || settings.tone;
+    const context = await contextFor(chatId, Infinity, settings.contextMessages);
+    const fwd = await T.translate({ text: textPt, from: settings.myLang, to, tone, context, glossary: settings.glossary });
+    const back = await T.translate({ text: fwd.text, from: to, to: settings.myLang, tone: "neutral", glossary: settings.glossary });
+    const result = { textPt, translated: fwd.text, backTranslated: back.text, to, toName: T.langName(to), createdAt: Date.now() };
+    await C.setMeta(`preview:${chatId}`, result);
+    return result;
   }
 
   // ------------------------------------------------------ chats e CRM
@@ -154,7 +234,7 @@
     const index = await clients();
     return C.updateChat(info.chatId, (cur) => {
       const next = {
-        translation: { enabled: false, contactLang: "en", tone: "informal" },
+        translation: { enabled: false, contactLang: "auto", tone: "" }, // tom vazio = o padrão das preferências
         unreadCount: 0,
         lastMessageAt: 0,
         ...cur,
@@ -251,7 +331,9 @@
           }
         } else warning = tabs.size ? "O WhatsApp Web ainda está carregando: mostrando o que já estava salvo." : "WhatsApp Web fechado: mostrando o que já estava salvo.";
         const messages = await C.messagesPage(chatId, { limit: HISTORY_PAGE });
-        return { chat: await C.getChat(chatId), messages, warning };
+        const chat = await C.getChat(chatId);
+        if (chat?.translation?.enabled) queueChat(messages);
+        return { chat, messages, warning };
       }
 
       case C.OPS.LOAD_MORE: {
@@ -264,17 +346,58 @@
           if (got.filter((m) => m.ts < beforeTs).length < HISTORY_PAGE - 1) chat = await C.updateChat(chatId, (c) => ({ ...c, historyComplete: true }));
           messages = await C.messagesPage(chatId, { beforeTs, limit: HISTORY_PAGE });
         }
+        if (chat?.translation?.enabled) queueChat(messages);
         return { messages, complete: Boolean(chat?.historyComplete) && messages.length < HISTORY_PAGE };
       }
 
       case C.OPS.SEND_TEXT: {
-        const text = String(req.text || "");
+        let text = String(req.text || "");
+        let extra;
+        const chat = await C.getChat(req.chatId);
+        if (chat?.translation?.enabled) {
+          // Falha segura: com a tradução ligada, só sai um texto traduzido pela
+          // própria extensão — nunca o português digitado, nem por engano.
+          const textPt = String(req.textPt || "");
+          if (!textPt.trim()) throw new Error("Tradução ligada: escreva a mensagem em português para ser traduzida.");
+          if (req.skipPreview) {
+            const settings = await C.loadSettings();
+            if (settings.requirePreview) throw new Error("A prévia da tradução é obrigatória (veja as preferências das Conversas).");
+            text = (await preview(req.chatId, textPt)).translated;
+          } else {
+            const p = await C.getMeta(`preview:${req.chatId}`);
+            if (!p || p.textPt !== textPt || p.translated !== text) throw new Error("A tradução mudou ou expirou. Gere a prévia de novo antes de enviar.");
+          }
+          extra = { textPt, translatedFrom: textPt, lang: C.contactLangOf(chat, await C.loadSettings()) };
+        }
         if (!text.trim()) throw new Error("Mensagem vazia.");
         if (text.length > 65000) throw new Error("Mensagem longa demais.");
         const msg = await exec({ op: C.TAB_CMDS.SEND_TEXT, chatId: req.chatId, text }, 60000);
-        if (req.extra) Object.assign(msg, req.extra); // ex.: texto original em PT (Fase 4)
+        if (extra) Object.assign(msg, extra);
         await onIncoming(msg, { chatId: req.chatId });
+        if (extra) await C.setMeta(`preview:${req.chatId}`, null); // uma prévia vale para um envio
         return msg;
+      }
+
+      case C.OPS.TRANSLATE_PREVIEW:
+        if (!String(req.textPt || "").trim()) throw new Error("Mensagem vazia.");
+        return preview(req.chatId, String(req.textPt));
+
+      case C.OPS.SET_TRANSLATION: {
+        const patch = {};
+        if ("enabled" in req) patch.enabled = Boolean(req.enabled);
+        if ("contactLang" in req) patch.contactLang = String(req.contactLang || "auto");
+        if ("tone" in req) patch.tone = String(req.tone || "");
+        const chat = await C.updateChat(req.chatId, (c) => (c ? { ...c, translation: { ...(c.translation || {}), ...patch } } : null));
+        if (!chat) throw new Error("Conversa não encontrada.");
+        broadcast(C.EVENTS.CHAT_UPDATED, { chat });
+        if (chat.translation.enabled) queueChat(await C.messagesPage(req.chatId, { limit: HISTORY_PAGE }));
+        return chat;
+      }
+
+      case C.OPS.RETRANSLATE: {
+        const m = await C.patchMessage(req.messageId, (m) => (m.fromMe ? null : { ...m, translationStatus: "stale" }));
+        if (m) queueTranslation(m.id, { front: true });
+        return true;
       }
 
       case C.OPS.MARK_READ: {

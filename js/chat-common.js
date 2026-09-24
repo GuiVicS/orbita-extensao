@@ -28,6 +28,37 @@
     SEND_TEXT: "chat.sendText",
     MARK_READ: "chat.markRead",
     REFRESH: "chat.refresh",
+    SET_TRANSLATION: "chat.setTranslation", // liga/desliga e ajusta idioma/tom da conversa
+    TRANSLATE_PREVIEW: "translate.preview", // PT → idioma do contato + retro-tradução
+    RETRANSLATE: "message.retranslate", // tenta de novo uma tradução que falhou
+  };
+
+  // Preferências das Conversas (chrome.storage.local). Sem chaves de API aqui:
+  // a tradução usa o provedor configurado em "orbita:ai".
+  const SETTINGS_KEY = "orbita:chat:settings";
+  const DEFAULT_SETTINGS = {
+    myLang: "pt", // idioma em que você lê e escreve
+    defaultContactLang: "en", // idioma do contato quando ainda não foi detectado
+    tone: "informal",
+    requirePreview: true, // mostrar a tradução antes de enviar
+    contextMessages: 6, // mensagens anteriores enviadas à IA como contexto
+    glossary: [], // [{ term, translation?, keep? }]
+    privacyAccepted: false,
+  };
+  async function loadSettings() {
+    const r = await chrome.storage.local.get(SETTINGS_KEY);
+    return { ...DEFAULT_SETTINGS, ...(r[SETTINGS_KEY] || {}) };
+  }
+  async function saveSettings(patch) {
+    const next = { ...(await loadSettings()), ...patch };
+    await chrome.storage.local.set({ [SETTINGS_KEY]: next });
+    return next;
+  }
+  // Idioma para o qual as mensagens deste chat são traduzidas ao enviar.
+  const contactLangOf = (chat, settings) => {
+    const t = chat?.translation || {};
+    if (t.contactLang && t.contactLang !== "auto") return t.contactLang;
+    return t.detectedLang && t.detectedLang !== settings.myLang ? t.detectedLang : settings.defaultContactLang;
   };
 
   // Eventos que o service worker envia ao painel pela porta PORT_UI.
@@ -90,8 +121,10 @@
     if (!msg) return "";
     if (msg.revoked) return "🚫 Mensagem apagada";
     if (msg.type === "audio") return `🎤 Áudio${msg.audio?.duration ? ` (${Math.round(msg.audio.duration)}s)` : ""}`;
-    if (msg.type === "other") return msg.text ? `📎 ${msg.text}` : `📎 ${msg.label || "Mídia"}`;
-    return msg.text || "";
+    // na lista, você lê no seu idioma: a tradução das recebidas e o que você escreveu nas enviadas
+    const text = (msg.fromMe ? msg.textPt : msg.translationStatus === "done" && msg.translatedText) || msg.text;
+    if (msg.type === "other") return text ? `📎 ${text}` : `📎 ${msg.label || "Mídia"}`;
+    return text || "";
   }
 
   // ------------------------------------------------------------ banco
@@ -286,6 +319,7 @@
 
   globalThis.OrbitaChat = {
     CHANNEL, PORT_TAB, PORT_UI, OPS, EVENTS, TAB_CMDS,
+    SETTINGS_KEY, DEFAULT_SETTINGS, loadSettings, saveSettings, contactLangOf,
     digits, phoneVariants, formatPhone, mergeMessage, previewOf,
     DB_NAME, openDb, getChat, listChats, updateChat, upsertMessages, patchMessage, messagesPage, countMessages, getMeta, setMeta,
     openMainDbReadOnly, loadClientIndex, findClient,

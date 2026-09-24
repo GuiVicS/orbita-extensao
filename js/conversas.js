@@ -52,7 +52,13 @@
     external: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
     alert: '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
     spinner: '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
+    languages: '<path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/>',
+    x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
   };
+  // nomes dos idiomas em português, para a interface
+  const LANG_PT = { pt: "português", en: "inglês", es: "espanhol", fr: "francês", de: "alemão", it: "italiano", nl: "holandês", ru: "russo", zh: "chinês", ja: "japonês", ko: "coreano", ar: "árabe", hi: "hindi", tr: "turco", pl: "polonês", uk: "ucraniano", he: "hebraico", id: "indonésio" };
+  const langLabel = (code) => LANG_PT[code] || code || "?";
   const icon = (n, s = 16, extra = "") => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${PATHS[n]}</svg>`;
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
@@ -119,6 +125,10 @@
     stages: new Map(),
     sideOpen: true,
     unseenBelow: 0,
+    settings: null, // preferências das Conversas (C.loadSettings)
+    showOriginal: new Set(), // mensagens com o original expandido
+    preview: null, // prévia da tradução antes de enviar
+    trOpen: false, // popover de tradução aberto
   };
   try {
     S.sideOpen = localStorage.getItem("orbita-chat-side") !== "0";
@@ -254,6 +264,29 @@
     $("#side").hidden = true;
   }
 
+  const same = (a, b) => String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+  const TR_ERRORS = { NOT_CONFIGURED: "configure a IA nas Opções", AUTH: "chave da IA inválida", RATE_LIMIT: "limite da IA atingido", TIMEOUT: "a IA demorou demais", INVALID_OUTPUT: "tradução descartada por segurança", REFUSED: "a IA recusou" };
+
+  // Texto do balão com a camada de tradução:
+  // - recebida: português em destaque e o original recolhível;
+  // - enviada pela tradução: o texto que saiu e, abaixo, o que você escreveu.
+  function textBlock(m) {
+    if (m.fromMe) {
+      if (!m.textPt || same(m.textPt, m.text)) return waFormat(m.text);
+      return `${waFormat(m.text)}<span class="orig pt" title="O que você escreveu">${icon("languages", 12)}<span>${waFormat(m.textPt)}</span></span>`;
+    }
+    const st = m.translationStatus;
+    if (st === "done" && m.translatedText && !same(m.translatedText, m.text)) {
+      const open = S.showOriginal.has(m.id);
+      return `${waFormat(m.translatedText)}<span class="trmeta">${icon("languages", 12)} Traduzido${m.lang ? ` do ${esc(langLabel(m.lang))}` : ""} ·
+        <button class="link" data-orig="${esc(m.id)}" aria-expanded="${open}">${open ? "ocultar original" : "mostrar original"}</button></span>${open ? `<span class="orig">${waFormat(m.text)}</span>` : ""}`;
+    }
+    if (st === "pending" || st === "stale") return `${waFormat(m.text)}<span class="trmeta">${icon("spinner", 12, 'class="spin"')} ${st === "stale" ? "Mensagem editada, traduzindo de novo…" : "Traduzindo…"}</span>`;
+    if (st === "failed")
+      return `${waFormat(m.text)}<span class="trmeta err" title="${esc(m.translationError || "")}">${icon("alert", 12)} Não traduzida (${esc(TR_ERRORS[m.translationErrorCode] || "erro")}) · <button class="link" data-retry="${esc(m.id)}">tentar de novo</button></span>`;
+    return waFormat(m.text);
+  }
+
   function bubbleHtml(m, prev) {
     let head = "";
     if (!prev || dayKey(prev.ts) !== dayKey(m.ts)) head += `<div class="day">${esc(dayLabel(m.ts))}</div>`;
@@ -261,9 +294,9 @@
     const meta = `<span class="meta">${m.edited ? "editada · " : ""}${esc(timeFmt.format(new Date(m.ts)))}${tick(m)}</span>`;
     let body;
     if (m.revoked) body = `${icon("ban", 14, 'style="display:inline;vertical-align:-2px"')} Mensagem apagada${m.text ? `<span class="cap" style="opacity:.7">“${esc(m.text)}”</span>` : ""}`;
-    else if (m.type === "audio") body = `<span class="kind">${icon("mic", 15)} ${m.audio?.ptt ? "Mensagem de voz" : "Áudio"}${m.audio?.duration ? ` · ${Math.floor(m.audio.duration / 60)}:${String(Math.round(m.audio.duration % 60)).padStart(2, "0")}` : ""}</span>${m.text ? `<span class="cap">${waFormat(m.text)}</span>` : ""}`;
-    else if (m.type === "other") body = `<span class="kind">${icon("clip", 14)} ${esc(m.label || "Mídia")}${m.filename ? `: ${esc(m.filename)}` : ""}</span>${m.text ? `<span class="cap">${waFormat(m.text)}</span>` : ""}`;
-    else body = waFormat(m.text);
+    else if (m.type === "audio") body = `<span class="kind">${icon("mic", 15)} ${m.audio?.ptt ? "Mensagem de voz" : "Áudio"}${m.audio?.duration ? ` · ${Math.floor(m.audio.duration / 60)}:${String(Math.round(m.audio.duration % 60)).padStart(2, "0")}` : ""}</span>${m.text ? `<span class="cap">${textBlock(m)}</span>` : ""}`;
+    else if (m.type === "other") body = `<span class="kind">${icon("clip", 14)} ${esc(m.label || "Mídia")}${m.filename ? `: ${esc(m.filename)}` : ""}</span>${m.text ? `<span class="cap">${textBlock(m)}</span>` : ""}`;
+    else body = textBlock(m);
     const cls = ["b", m.fromMe ? "me" : "", first ? "first" : "", m.revoked ? "revoked" : "", m._pending ? "pending" : "", m._new ? "new" : ""].filter(Boolean).join(" ");
     return `${head}<div class="${cls}" data-id="${esc(m.id)}">${body}${meta}</div>`;
   }
@@ -309,6 +342,8 @@
     }
   }
 
+  const translating = () => Boolean(S.current?.translation?.enabled);
+
   function composerState() {
     if (!S.status.connected) return { ok: false, why: "Abra o WhatsApp Web em uma aba para enviar mensagens." };
     if (!S.status.ready) return { ok: false, why: "O WhatsApp Web ainda está carregando…" };
@@ -320,9 +355,34 @@
     if (!ta) return;
     const st = composerState();
     ta.disabled = !st.ok;
-    ta.placeholder = st.ok ? "Digite uma mensagem" : st.why;
+    ta.placeholder = !st.ok ? st.why : translating() ? `Escreva em ${langLabel(S.settings.myLang)}: vai em ${langLabel(C.contactLangOf(S.current, S.settings))}` : "Digite uma mensagem";
     ta.title = st.ok ? "Enter envia · Shift+Enter quebra a linha" : st.why;
     $("#sendBtn").disabled = !st.ok || !ta.value.trim();
+  }
+
+  function trButton(c) {
+    const t = c.translation || {};
+    const on = Boolean(t.enabled);
+    const to = S.settings ? C.contactLangOf(c, S.settings) : "en";
+    return `<button class="trbtn ${on ? "on" : ""}" id="trBtn" aria-haspopup="dialog" aria-expanded="${S.trOpen}" title="Tradução desta conversa">${icon("languages", 16)}
+      <span>${on ? `${esc((S.settings?.myLang || "pt").toUpperCase())} ⇄ ${esc(to.toUpperCase())}` : "Traduzir"}</span></button>
+      ${S.trOpen ? trPopover(c, to) : ""}`;
+  }
+
+  function trPopover(c, to) {
+    const t = c.translation || {};
+    const langs = Object.keys(LANG_PT).filter((l) => l !== S.settings.myLang);
+    const detected = t.detectedLang && t.detectedLang !== S.settings.myLang ? langLabel(t.detectedLang) : null;
+    return `<div class="trpop" role="dialog" aria-label="Tradução da conversa">
+      <label class="swrow"><span><b>Traduzir esta conversa</b><small>Você lê e escreve em ${esc(langLabel(S.settings.myLang))}.</small></span>
+        <input type="checkbox" id="trEnabled" ${t.enabled ? "checked" : ""}></label>
+      <label class="field"><span>Idioma do contato</span><select id="trLang">
+        <option value="auto" ${!t.contactLang || t.contactLang === "auto" ? "selected" : ""}>Automático${detected ? ` (detectado: ${esc(detected)})` : ` (padrão: ${esc(langLabel(S.settings.defaultContactLang))})`}</option>
+        ${langs.map((l) => `<option value="${l}" ${t.contactLang === l ? "selected" : ""}>${esc(langLabel(l)[0].toUpperCase() + langLabel(l).slice(1))}</option>`).join("")}</select></label>
+      <label class="field"><span>Tom das mensagens enviadas</span><select id="trTone">
+        <option value="" ${!t.tone ? "selected" : ""}>Padrão (${S.settings.tone === "formal" ? "formal" : "informal"})</option>
+        <option value="informal" ${t.tone === "informal" ? "selected" : ""}>Informal</option><option value="formal" ${t.tone === "formal" ? "selected" : ""}>Formal</option></select></label>
+      <p class="hint">${icon("shield", 12)} O texto das mensagens desta conversa vai para o provedor de IA configurado nas Opções.</p></div>`;
   }
 
   function renderHeader() {
@@ -331,12 +391,15 @@
     if (!c || !h) return;
     h.innerHTML = `${avatar(c, stageOf(c))}<div class="who"><b>${esc(displayName(c))}</b>
       <small>${esc(C.formatPhone(c.phone) || "Número oculto pelo WhatsApp")}${c.client ? `<span class="chip crm">Cliente do CRM</span>` : `<span class="chip">Fora do CRM</span>`}</small></div>
+      ${trButton(c)}
       <button class="ibtn ${S.sideOpen ? "on" : ""}" id="sideBtn" aria-label="${S.sideOpen ? "Esconder" : "Mostrar"} dados do cliente" aria-pressed="${S.sideOpen}" title="Dados do cliente">${icon("panel", 18)}</button>`;
   }
 
   async function openChat(chatId) {
     const c = S.chats.find((x) => x.chatId === chatId) || { chatId };
     S.current = c;
+    S.preview = null;
+    S.trOpen = false;
     S.messages = [];
     S.complete = false;
     S.unseenBelow = 0;
@@ -344,6 +407,7 @@
     $("#thread").innerHTML = `<div class="thead" id="thead"></div><div id="notice"></div>
       <div class="msgs" id="msgs" role="log" aria-live="polite" aria-label="Mensagens"><div class="older">${icon("spinner", 14, 'class="spin"')} Carregando…</div></div>
       <button class="jump" id="jump" hidden aria-label="Ir para a última mensagem">${icon("down", 20)}</button>
+      <div id="preview"></div>
       <form class="composer" id="composer"><label class="sr" for="text">Mensagem</label><textarea id="text" rows="1"></textarea>
         <button class="send" id="sendBtn" type="submit" aria-label="Enviar mensagem" disabled>${icon("send", 18)}</button></form>`;
     renderHeader();
@@ -393,7 +457,22 @@
     });
     $("#composer").addEventListener("submit", (e) => {
       e.preventDefault();
-      sendText();
+      submitComposer();
+    });
+    $("#msgs").addEventListener("click", (e) => {
+      const orig = e.target.closest("[data-orig]");
+      if (orig) {
+        const id = orig.dataset.orig;
+        S.showOriginal.has(id) ? S.showOriginal.delete(id) : S.showOriginal.add(id);
+        return renderMessages({ keepScroll: true });
+      }
+      const retry = e.target.closest("[data-retry]");
+      if (retry) call(C.OPS.RETRANSLATE, { messageId: retry.dataset.retry }).catch((err) => toast(err.message, "err"));
+    });
+    $("#thead").addEventListener("change", (e) => {
+      if (e.target.id === "trEnabled") setTranslation({ enabled: e.target.checked });
+      if (e.target.id === "trLang") setTranslation({ contactLang: e.target.value });
+      if (e.target.id === "trTone") setTranslation({ tone: e.target.value });
     });
     $("#msgs").addEventListener("scroll", () => {
       const nb = nearBottom();
@@ -407,6 +486,10 @@
       $("#msgs").scrollTop = $("#msgs").scrollHeight;
     });
     $("#thead").addEventListener("click", (e) => {
+      if (e.target.closest("#trBtn")) {
+        S.trOpen = !S.trOpen;
+        return renderHeader();
+      }
       if (!e.target.closest("#sideBtn")) return;
       S.sideOpen = !S.sideOpen;
       try {
@@ -423,20 +506,85 @@
     j.innerHTML = icon("down", 20) + (S.unseenBelow ? `<span class="badge">${S.unseenBelow}</span>` : "");
   }
 
-  async function sendText() {
+  // ---- prévia da tradução (tradução ligada)
+  function renderPreview() {
+    const box = $("#preview");
+    if (!box) return;
+    const p = S.preview;
+    if (!p) return void (box.innerHTML = "");
+    let body;
+    if (p.status === "loading") body = `<div class="pvline">${icon("spinner", 14, 'class="spin"')} Traduzindo para ${esc(langLabel(C.contactLangOf(S.current, S.settings)))}…</div>`;
+    else if (p.status === "error") body = `<div class="pvline err">${icon("alert", 14)} <span>Não foi possível traduzir: ${esc(p.error.replace(/\.$/, ""))}. <b>Nada foi enviado.</b></span></div>`;
+    else
+      body = `<div class="pvsec"><small>Vai ser enviado em ${esc(langLabel(p.result.to))}</small><div class="pvtext">${waFormat(p.result.translated)}</div></div>
+        <div class="pvsec back"><small>Conferência: a tradução de volta para ${esc(langLabel(S.settings.myLang))}</small><div>${waFormat(p.result.backTranslated)}</div></div>`;
+    box.innerHTML = `<div class="pv" role="region" aria-label="Prévia da tradução">${body}
+      <div class="pvact"><button class="btn" id="pvCancel" type="button">Cancelar</button><button class="btn" id="pvEdit" type="button">Editar</button>
+      ${p.status === "error" ? `<button class="btn primary" id="pvRetry" type="button">Tentar de novo</button>` : `<button class="btn primary" id="pvSend" type="button" ${p.status !== "ready" ? "disabled" : ""}>${icon("send", 14)} Enviar</button>`}</div></div>`;
+    $("#pvCancel").onclick = () => closePreview(true);
+    $("#pvEdit").onclick = () => closePreview(false);
+    if ($("#pvRetry")) $("#pvRetry").onclick = () => requestPreview(p.textPt);
+    if ($("#pvSend")) {
+      $("#pvSend").onclick = () => sendText();
+      $("#pvSend").focus();
+    }
+  }
+
+  function closePreview(clear) {
+    S.preview = null;
+    renderPreview();
     const ta = $("#text");
-    const text = ta.value;
-    if (!text.trim() || !composerState().ok || !S.current) return;
+    ta.readOnly = false;
+    if (clear) ta.value = "";
+    renderComposer();
+    ta.focus();
+  }
+
+  async function requestPreview(textPt) {
     const chatId = S.current.chatId;
+    S.preview = { textPt, status: "loading" };
+    $("#text").readOnly = true;
+    renderPreview();
+    try {
+      const result = await call(C.OPS.TRANSLATE_PREVIEW, { chatId, textPt });
+      if (S.current?.chatId !== chatId || S.preview?.textPt !== textPt) return;
+      S.preview = { textPt, status: "ready", result };
+    } catch (e) {
+      if (S.current?.chatId !== chatId || S.preview?.textPt !== textPt) return;
+      S.preview = { textPt, status: "error", error: e.message };
+    }
+    renderPreview();
+  }
+
+  function submitComposer() {
+    const text = $("#text").value;
+    if (!text.trim() || !composerState().ok || !S.current) return;
+    if (!translating()) return sendText();
+    if (S.preview) return S.preview.status === "ready" ? sendText() : undefined;
+    if (!S.settings.requirePreview) return sendText({ skipPreview: true });
+    requestPreview(text);
+  }
+
+  async function sendText({ skipPreview = false } = {}) {
+    const ta = $("#text");
+    const chatId = S.current.chatId;
+    const tr = translating();
+    const textPt = ta.value;
+    const p = S.preview;
+    if (tr && !skipPreview && p?.status !== "ready") return; // nunca envia sem tradução aprovada
+    const text = tr ? (skipPreview ? "" : p.result.translated) : textPt;
     // bolha provisória até a confirmação do WhatsApp
-    const temp = { id: `pending-${Date.now()}`, chatId, fromMe: true, ts: Date.now(), type: "text", text, ack: 0, _pending: true, _new: true };
+    const temp = { id: `pending-${Date.now()}`, chatId, fromMe: true, ts: Date.now(), type: "text", text: text || "Traduzindo…", textPt: tr ? textPt : undefined, ack: 0, _pending: true, _new: true };
     S.messages.push(temp);
+    S.preview = null;
+    renderPreview();
+    ta.readOnly = false;
     ta.value = "";
     ta.style.height = "auto";
     renderComposer();
     renderMessages({ toBottom: true });
     try {
-      const msg = await call(C.OPS.SEND_TEXT, { chatId, text });
+      const msg = await call(C.OPS.SEND_TEXT, tr ? { chatId, text, textPt, skipPreview } : { chatId, text: textPt });
       const i = S.messages.indexOf(temp);
       if (i >= 0) {
         if (S.messages.some((m) => m.id === msg.id)) S.messages.splice(i, 1); // o evento chegou antes
@@ -444,11 +592,53 @@
       }
     } catch (e) {
       S.messages = S.messages.filter((m) => m !== temp);
-      if (!ta.value) ta.value = text; // devolve o texto para não perder
+      if (!ta.value) ta.value = textPt; // devolve o texto para não perder
       renderComposer();
       toast(`Não foi enviada: ${e.message}`, "err");
     }
     if (S.current?.chatId === chatId) renderMessages({ toBottom: true });
+  }
+
+  // ---- aviso de privacidade (primeira vez que a tradução é ligada)
+  function privacyDialog() {
+    return new Promise((resolve) => {
+      const wrap = document.createElement("div");
+      wrap.className = "modal";
+      wrap.innerHTML = `<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="pvTitle">
+        <div class="dz">${icon("shield", 22)}</div><h2 id="pvTitle">Antes de ligar a tradução</h2>
+        <ul><li>O texto das mensagens desta conversa (e algumas mensagens anteriores, como contexto) é enviado ao <b>provedor de IA configurado nas Opções</b> para ser traduzido.</li>
+        <li>Nada é enviado ao contato sem você revisar e clicar em Enviar.</li>
+        <li>As traduções ficam salvas só neste computador. A chave da IA não entra no backup.</li>
+        <li>Use com clientes que concordaram em ser atendidos por você (LGPD).</li></ul>
+        <div class="pvact"><button class="btn" data-a="no">Agora não</button><button class="btn primary" data-a="yes">Entendi, ligar tradução</button></div></div>`;
+      document.body.append(wrap);
+      wrap.querySelector('[data-a="yes"]').focus();
+      wrap.addEventListener("click", (e) => {
+        const a = e.target.closest("[data-a]")?.dataset.a;
+        if (!a) return;
+        wrap.remove();
+        resolve(a === "yes");
+      });
+    });
+  }
+
+  async function setTranslation(patch) {
+    const chatId = S.current.chatId;
+    if (patch.enabled && !S.settings.privacyAccepted) {
+      if (!(await privacyDialog())) return renderHeader();
+      S.settings = await C.saveSettings({ privacyAccepted: true });
+    }
+    try {
+      const chat = await call(C.OPS.SET_TRANSLATION, { chatId, ...patch });
+      if (S.current?.chatId !== chatId) return;
+      S.current = { ...S.current, ...chat };
+      if (!chat.translation.enabled && S.preview) closePreview(false);
+    } catch (e) {
+      toast(e.message, "err");
+    }
+    renderHeader();
+    renderComposer();
+    renderMessages({ keepScroll: true });
   }
 
   // ------------------------------------------------------- painel do cliente
@@ -534,7 +724,12 @@
           S.chats.unshift(data.chat);
           S.chats.sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
           if (S.current?.chatId === data.chat.chatId) {
+            const trChanged = JSON.stringify(S.current.translation) !== JSON.stringify(data.chat.translation);
             S.current = { ...S.current, ...data.chat };
+            if (trChanged) {
+              renderHeader();
+              renderComposer();
+            }
             if (data.chat.unreadCount) call(C.OPS.MARK_READ, { chatId: data.chat.chatId }).catch(() => {});
           }
           renderList();
@@ -566,10 +761,23 @@
     }
   }
 
+  // Esc fecha o popover de tradução ou a prévia (registrado uma vez só)
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !S.current) return;
+    if (S.trOpen) {
+      S.trOpen = false;
+      renderHeader();
+    } else if (S.preview) closePreview(false);
+  });
+
   // ----------------------------------------------------------------- início
   (async () => {
     welcome();
     connect();
+    S.settings = await C.loadSettings();
+    chrome.storage.onChanged.addListener((ch, area) => {
+      if (area === "local" && C.SETTINGS_KEY in ch) C.loadSettings().then((st) => ((S.settings = st), renderHeader(), renderComposer()));
+    });
     await loadStages().catch(() => {});
     try {
       S.status = await call(C.OPS.STATUS);
