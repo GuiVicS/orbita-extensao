@@ -187,3 +187,18 @@ body.embed .app { height: calc(100vh - 32px); margin: 16px 0; border-radius: var
 .player .dur { font-size: 11.5px; color: var(--wa-meta); font-variant-numeric: tabular-nums; }
 .player .mic { color: var(--tick-read); }
 .transcript { display: block; margin-top: 6px; padding-top: 6px; border-top: 1px solid color-mix(in srgb, var(--wa-fg) 10%, transparent); font-size: 13.5px; }
+
+/* ---------- voz ---------- */
+.cbtn { width: 40px; height: 42px; border-radius: 12px; border: 0; background: transparent; color: var(--muted-foreground); display: grid; place-items: center; cursor: pointer; flex: none; }
+.cbtn:hover { background: var(--muted); color: var(--foreground); }
+.cbtn.on { background: color-mix(in oklch, var(--primary) 14%, transparent); color: var(--primary); }
+.cbtn:disabled { opacity: .4; cursor: default; background: none; }
+.pv audio { width: 100%; height: 36px; margin: 2px 0 8px; }
+.rec { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.rec .led { width: 12px; height: 12px; border-radius: 50%; background: var(--destructive); animation: pulse 1.2s infinite; }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--destructive) 50%, transparent); } 50% { box-shadow: 0 0 0 8px transparent; } }
+.rec .time { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 44px; }
+.rec .meter { flex: 1; min-width: 120px; height: 26px; display: flex; align-items: center; gap: 2px; overflow: hidden; }
+.rec .meter i { width: 3px; border-radius: 2px; background: var(--destructive); flex: none; }
+.rec small { width: 100%; color: var(--muted-foreground); font-size: 12px; }
+.aibadge { display: inline-flex; align-items: center; gap: 4px; margin-top: 5px; font-size: 10.5px; font-weight: 700; color: var(--wa-meta); border: 1px solid color-mix(in srgb, var(--wa-meta) 40%, transparent); border-radius: 999px; padding: 0 7px; }

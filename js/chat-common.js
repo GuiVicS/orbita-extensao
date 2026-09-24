@@ -33,6 +33,9 @@
     RETRANSLATE: "message.retranslate", // tenta de novo uma tradução que falhou
     MEDIA_FETCH: "media.fetch", // baixa (se preciso) a mídia de uma mensagem para o cache
     TRANSCRIBE: "audio.transcribe", // transcreve (e traduz) um áudio
+    TRANSCRIBE_DRAFT: "audio.transcribeDraft", // transcreve o que você gravou, para revisar
+    VOICE_PREVIEW: "audio.generatePreview", // gera a voz (Fish Audio) do texto aprovado
+    SEND_AUDIO: "chat.sendAudio", // envia a voz gerada como mensagem de voz
   };
 
   // Preferências das Conversas (chrome.storage.local). Sem chaves de API aqui:
@@ -49,7 +52,15 @@
     transcriptionProvider: "auto", // "auto" (Groq, senão OpenAI) | "groq" | "openai"
     transcribeOnOpen: true, // transcrever os áudios recebidos ao abrir a conversa
     maxAudioSec: 180, // áudios mais longos só com clique
+    fishVoiceId: "", // reference_id da voz no Fish Audio (a chave fica em "orbita:chat:secrets")
+    fishModel: "s2.1-pro",
+    voiceSpeed: 1,
+    maxTtsChars: 600, // texto máximo por áudio gerado
+    maxVoiceSec: 60, // duração máxima do áudio gerado
+    aiVoiceNotice: false, // enviar "(voz gerada por IA)" depois do áudio
   };
+  // Aviso enviado depois de uma voz gerada, quando ligado nas preferências.
+  const AI_VOICE_NOTICE = { pt: "(áudio com voz gerada por IA)", en: "(AI-generated voice message)", es: "(audio con voz generada por IA)", fr: "(message vocal généré par IA)", de: "(KI-generierte Sprachnachricht)", it: "(messaggio vocale generato dall'IA)" };
   async function loadSettings() {
     const r = await chrome.storage.local.get(SETTINGS_KEY);
     return { ...DEFAULT_SETTINGS, ...(r[SETTINGS_KEY] || {}) };
@@ -81,6 +92,7 @@
     GET_MESSAGES: "getMessages",
     SEND_TEXT: "sendText",
     DOWNLOAD_MEDIA: "downloadMedia",
+    SEND_VOICE: "sendVoice",
   };
 
   // ------------------------------------------------------------ telefones
@@ -130,7 +142,7 @@
     if (!msg) return "";
     if (msg.revoked) return "🚫 Mensagem apagada";
     if (msg.type === "audio") {
-      const said = (!msg.fromMe && msg.translationStatus === "done" && msg.translatedText) || msg.audio?.transcript;
+      const said = (msg.fromMe ? msg.textPt : msg.translationStatus === "done" && msg.translatedText) || msg.audio?.transcript;
       return `🎤 ${said ? `“${said}”` : `Áudio${msg.audio?.duration ? ` (${Math.floor(msg.audio.duration / 60)}:${String(Math.round(msg.audio.duration % 60)).padStart(2, "0")})` : ""}`}`;
     }
     // na lista, você lê no seu idioma: a tradução das recebidas e o que você escreveu nas enviadas
@@ -358,7 +370,7 @@
 
   globalThis.OrbitaChat = {
     CHANNEL, PORT_TAB, PORT_UI, OPS, EVENTS, TAB_CMDS,
-    SETTINGS_KEY, DEFAULT_SETTINGS, loadSettings, saveSettings, contactLangOf, sourceText, getMedia, putMedia,
+    SETTINGS_KEY, DEFAULT_SETTINGS, loadSettings, saveSettings, contactLangOf, sourceText, getMedia, putMedia, AI_VOICE_NOTICE,
     digits, phoneVariants, formatPhone, mergeMessage, previewOf,
     DB_NAME, openDb, getChat, listChats, updateChat, upsertMessages, patchMessage, messagesPage, countMessages, getMeta, setMeta,
     openMainDbReadOnly, loadClientIndex, findClient,

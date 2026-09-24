@@ -59,7 +59,7 @@
   const extOf = (mime) => (/ogg|opus/.test(mime) ? "ogg" : /mpeg|mp3/.test(mime) ? "mp3" : /mp4|m4a|aac/.test(mime) ? "m4a" : /webm/.test(mime) ? "webm" : /wav/.test(mime) ? "wav" : "ogg");
 
   // Transcreve um Blob de áudio. Devolve { text, lang }. Texto vazio = sem fala.
-  async function transcribe(blob, { provider = "auto" } = {}) {
+  async function transcribe(blob, { provider = "auto", language } = {}) {
     if (!blob?.size) throw new TranscribeError("PROVIDER", "Áudio vazio.");
     if (blob.size > MAX_BYTES) throw new TranscribeError("TOO_LARGE", "Áudio grande demais para transcrever (máx. 25 MB).");
     const p = await resolveProvider(provider);
@@ -68,6 +68,7 @@
       form.append("file", blob, `audio.${extOf(blob.type || "")}`);
       form.append("model", p.model);
       form.append("response_format", "verbose_json");
+      if (language) form.append("language", language); // dica de idioma (ex.: sua própria gravação em PT)
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
       let r;

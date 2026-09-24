@@ -489,6 +489,64 @@
         queueTranscription(String(req.messageId), { front: true, manual: true });
         return true;
 
+      case C.OPS.TRANSCRIBE_DRAFT: {
+        const settings = await C.loadSettings();
+        const blob = b64ToBlob(String(req.data || ""), String(req.mime || "audio/webm"));
+        if (blob.size > 10 * 1024 * 1024) throw new Error("Gravação longa demais.");
+        const r = await W.transcribe(blob, { provider: settings.transcriptionProvider, language: settings.myLang });
+        if (!r.text) throw new Error("Não deu para entender a gravação. Tente de novo, mais perto do microfone.");
+        return { text: r.text };
+      }
+
+      case C.OPS.VOICE_PREVIEW: {
+        // Qual texto vira voz: com tradução, só o da prévia aprovada; sem, o que você digitou.
+        const settings = await C.loadSettings();
+        const chat = await C.getChat(req.chatId);
+        const textPt = String(req.textPt || "");
+        let text = textPt;
+        let lang = settings.myLang;
+        if (chat?.translation?.enabled) {
+          const p = await C.getMeta(`preview:${req.chatId}`);
+          if (!p || p.textPt !== textPt) throw new Error("Gere e confira a tradução antes de gerar a voz.");
+          text = p.translated;
+          lang = p.to;
+        }
+        if (!text.trim()) throw new Error("Mensagem vazia.");
+        if (text.length > settings.maxTtsChars) throw new Error(`Texto longo demais para um áudio (máx. ${settings.maxTtsChars} caracteres).`);
+        const V = globalThis.OrbitaVoice;
+        const opts = { text, voiceId: settings.fishVoiceId, model: settings.fishModel, speed: settings.voiceSpeed };
+        const mp3Key = await V.cacheKey(opts);
+        if (req.fresh || !(await C.getMedia(mp3Key))?.blob) await C.putMedia(mp3Key, await V.tts(opts), { text });
+        const genId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+        await C.setMeta(`voice:${req.chatId}`, { genId, text, textPt, lang, createdAt: Date.now() });
+        return { genId, mp3Key, text, textPt, lang, maxVoiceSec: settings.maxVoiceSec };
+      }
+
+      case C.OPS.SEND_AUDIO: {
+        // Falha segura: só sai o áudio gerado a partir da aprovação guardada aqui.
+        const settings = await C.loadSettings();
+        const approval = await C.getMeta(`voice:${req.chatId}`);
+        if (!approval || approval.genId !== req.genId) throw new Error("A voz mudou ou expirou. Gere de novo antes de enviar.");
+        const rec = await C.getMedia(`gen:${req.genId}`);
+        if (!rec?.blob || rec.chatId !== req.chatId || rec.text !== approval.text) throw new Error("Áudio gerado não encontrado. Gere de novo.");
+        if (!(rec.duration > 0) || rec.duration > settings.maxVoiceSec + 1) throw new Error(`O áudio gerado passou do limite de ${settings.maxVoiceSec} s.`);
+        const bytes = new Uint8Array(await rec.blob.arrayBuffer());
+        let bin = "";
+        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        const msg = await exec({ op: C.TAB_CMDS.SEND_VOICE, chatId: req.chatId, data: btoa(bin), mime: rec.blob.type || "audio/ogg; codecs=opus", duration: rec.duration }, 120000);
+        Object.assign(msg, { textPt: approval.textPt, lang: approval.lang, audio: { ...(msg.audio || {}), ptt: true, duration: Math.round(rec.duration), generated: true, transcript: approval.text, transcriptStatus: "done" } });
+        await C.putMedia(msg.id, rec.blob); // o player toca sem baixar de novo
+        await onIncoming(msg, { chatId: req.chatId });
+        await C.setMeta(`voice:${req.chatId}`, null);
+        await C.setMeta(`preview:${req.chatId}`, null);
+        if (settings.aiVoiceNotice) {
+          const notice = C.AI_VOICE_NOTICE[approval.lang] || C.AI_VOICE_NOTICE.en;
+          const n = await exec({ op: C.TAB_CMDS.SEND_TEXT, chatId: req.chatId, text: notice }, 60000).catch(() => null);
+          if (n) await onIncoming(n, { chatId: req.chatId });
+        }
+        return msg;
+      }
+
       case C.OPS.RETRANSLATE: {
         const m = await C.patchMessage(req.messageId, (m) => (m.fromMe ? null : { ...m, translationStatus: "stale" }));
         if (m) queueTranslation(m.id, { front: true });

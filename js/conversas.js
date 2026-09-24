@@ -52,6 +52,8 @@
     external: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
     alert: '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
     spinner: '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
+    speaker: '<path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 18.364a9 9 0 0 0 0-12.728"/>',
+    stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
     play: '<polygon points="6 3 20 12 6 21 6 3"/>',
     pause: '<rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/>',
     languages: '<path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/>',
@@ -131,6 +133,8 @@
     showOriginal: new Set(), // mensagens com o original expandido
     preview: null, // prévia da tradução antes de enviar
     trOpen: false, // popover de tradução aberto
+    voiceMode: false, // a próxima mensagem vai como áudio gerado (Fish Audio)
+    voice: null, // painel de voz: gravando / transcrevendo / gerando / pronto / erro
   };
   try {
     S.sideOpen = localStorage.getItem("orbita-chat-side") !== "0";
@@ -321,7 +325,8 @@
       default:
         tx = `<span class="trmeta">${transcribeBtn("Transcrever")}</span>`;
     }
-    return `${head}${tx}${m.text ? `<span class="cap">${waFormat(m.text)}</span>` : ""}`;
+    const ai = a.generated ? `<span class="aibadge" title="Áudio criado com voz sintética (Fish Audio)">${icon("speaker", 11)} Voz gerada por IA</span>` : "";
+    return `${head}${tx}${m.text ? `<span class="cap">${waFormat(m.text)}</span>` : ""}${ai}`;
   }
 
   // ---- player: um só elemento <audio> para a tela toda
@@ -433,7 +438,15 @@
     ta.disabled = !st.ok;
     ta.placeholder = !st.ok ? st.why : translating() ? `Escreva em ${langLabel(S.settings.myLang)}: vai em ${langLabel(C.contactLangOf(S.current, S.settings))}` : "Digite uma mensagem";
     ta.title = st.ok ? "Enter envia · Shift+Enter quebra a linha" : st.why;
-    $("#sendBtn").disabled = !st.ok || !ta.value.trim();
+    $("#sendBtn").disabled = !st.ok || !ta.value.trim() || Boolean(S.voice);
+    $("#micBtn").disabled = !st.ok || Boolean(S.voice) || Boolean(S.preview);
+    const vb = $("#voiceBtn");
+    vb.disabled = !st.ok;
+    vb.classList.toggle("on", S.voiceMode);
+    vb.setAttribute("aria-pressed", String(S.voiceMode));
+    $("#sendBtn").setAttribute("aria-label", S.voiceMode ? "Gerar áudio" : "Enviar mensagem");
+    $("#sendBtn").innerHTML = icon(S.voiceMode ? "speaker" : "send", 18);
+    if (S.voiceMode && st.ok) ta.placeholder = `Escreva em ${langLabel(S.settings.myLang)}: vai como áudio${translating() ? ` em ${langLabel(C.contactLangOf(S.current, S.settings))}` : ""}`;
   }
 
   function trButton(c) {
@@ -476,6 +489,8 @@
     S.current = c;
     S.preview = null;
     S.trOpen = false;
+    if (S.voice) cancelVoice();
+    S.voiceMode = false;
     S.messages = [];
     S.complete = false;
     S.unseenBelow = 0;
@@ -484,7 +499,10 @@
       <div class="msgs" id="msgs" role="log" aria-live="polite" aria-label="Mensagens"><div class="older">${icon("spinner", 14, 'class="spin"')} Carregando…</div></div>
       <button class="jump" id="jump" hidden aria-label="Ir para a última mensagem">${icon("down", 20)}</button>
       <div id="preview"></div>
-      <form class="composer" id="composer"><label class="sr" for="text">Mensagem</label><textarea id="text" rows="1"></textarea>
+      <form class="composer" id="composer">
+        <button class="cbtn" id="micBtn" type="button" aria-label="Gravar em ${esc(langLabel(S.settings?.myLang || "pt"))} (vira texto para revisar)" title="Gravar sua fala: vira texto para você revisar">${icon("mic", 18)}</button>
+        <button class="cbtn" id="voiceBtn" type="button" aria-pressed="false" aria-label="Enviar como áudio com voz gerada" title="Enviar como áudio (voz gerada pelo Fish Audio)">${icon("speaker", 18)}</button>
+        <label class="sr" for="text">Mensagem</label><textarea id="text" rows="1"></textarea>
         <button class="send" id="sendBtn" type="submit" aria-label="Enviar mensagem" disabled>${icon("send", 18)}</button></form>`;
     renderHeader();
     renderComposer();
@@ -530,6 +548,13 @@
         e.preventDefault();
         $("#composer").requestSubmit();
       }
+    });
+    $("#micBtn").addEventListener("click", () => startRecording());
+    $("#voiceBtn").addEventListener("click", () => {
+      S.voiceMode = !S.voiceMode;
+      if (S.preview) closePreview(false);
+      renderComposer();
+      $("#text").focus();
     });
     $("#composer").addEventListener("submit", (e) => {
       e.preventDefault();
@@ -590,6 +615,7 @@
   function renderPreview() {
     const box = $("#preview");
     if (!box) return;
+    if (S.voice) return renderVoice(box);
     const p = S.preview;
     if (!p) return void (box.innerHTML = "");
     let body;
@@ -600,12 +626,12 @@
         <div class="pvsec back"><small>Conferência: a tradução de volta para ${esc(langLabel(S.settings.myLang))}</small><div>${waFormat(p.result.backTranslated)}</div></div>`;
     box.innerHTML = `<div class="pv" role="region" aria-label="Prévia da tradução">${body}
       <div class="pvact"><button class="btn" id="pvCancel" type="button">Cancelar</button><button class="btn" id="pvEdit" type="button">Editar</button>
-      ${p.status === "error" ? `<button class="btn primary" id="pvRetry" type="button">Tentar de novo</button>` : `<button class="btn primary" id="pvSend" type="button" ${p.status !== "ready" ? "disabled" : ""}>${icon("send", 14)} Enviar</button>`}</div></div>`;
+      ${p.status === "error" ? `<button class="btn primary" id="pvRetry" type="button">Tentar de novo</button>` : `<button class="btn primary" id="pvSend" type="button" ${p.status !== "ready" ? "disabled" : ""}>${S.voiceMode ? `${icon("speaker", 14)} Gerar voz` : `${icon("send", 14)} Enviar`}</button>`}</div></div>`;
     $("#pvCancel").onclick = () => closePreview(true);
     $("#pvEdit").onclick = () => closePreview(false);
     if ($("#pvRetry")) $("#pvRetry").onclick = () => requestPreview(p.textPt);
     if ($("#pvSend")) {
-      $("#pvSend").onclick = () => sendText();
+      $("#pvSend").onclick = () => (S.voiceMode ? generateVoice(p.textPt) : sendText());
       $("#pvSend").focus();
     }
   }
@@ -638,7 +664,13 @@
 
   function submitComposer() {
     const text = $("#text").value;
-    if (!text.trim() || !composerState().ok || !S.current) return;
+    if (!text.trim() || !composerState().ok || !S.current || S.voice) return;
+    if (S.voiceMode) {
+      if (text.length > S.settings.maxTtsChars) return toast(`Texto longo demais para um áudio (máx. ${S.settings.maxTtsChars} caracteres).`, "err");
+      if (!translating()) return generateVoice(text);
+      if (S.preview) return S.preview.status === "ready" ? generateVoice(text) : undefined;
+      return requestPreview(text); // confere a tradução antes de gastar com voz
+    }
     if (!translating()) return sendText();
     if (S.preview) return S.preview.status === "ready" ? sendText() : undefined;
     if (!S.settings.requirePreview) return sendText({ skipPreview: true });
@@ -675,6 +707,147 @@
       if (!ta.value) ta.value = textPt; // devolve o texto para não perder
       renderComposer();
       toast(`Não foi enviada: ${e.message}`, "err");
+    }
+    if (S.current?.chatId === chatId) renderMessages({ toBottom: true });
+  }
+
+  // ---- voz: gravar (vira texto), gerar com o Fish Audio, ouvir e enviar
+  const A = globalThis.OrbitaAudio;
+  const blobToB64 = (blob) =>
+    new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result).slice(String(r.result).indexOf(",") + 1));
+      r.onerror = () => rej(r.error);
+      r.readAsDataURL(blob);
+    });
+
+  function renderVoice(box) {
+    const v = S.voice;
+    let body;
+    let acts = `<button class="btn" id="vcCancel" type="button">Cancelar</button>`;
+    if (v.stage === "recording") {
+      body = `<div class="rec"><span class="led"></span><span class="time" id="vcTime">0:00</span><div class="meter" id="vcMeter"></div><small>Fale em ${esc(langLabel(S.settings.myLang))}. Vira texto para você revisar.</small></div>`;
+      acts = `<button class="btn" id="vcCancel" type="button">Descartar</button><button class="btn primary" id="vcStop" type="button">${icon("stop", 13)} Concluir</button>`;
+    } else if (v.stage === "transcribing") body = `<div class="pvline">${icon("spinner", 14, 'class="spin"')} Transcrevendo sua fala…</div>`;
+    else if (v.stage === "generating") body = `<div class="pvline">${icon("spinner", 14, 'class="spin"')} Gerando a voz${v.lang && v.lang !== S.settings.myLang ? ` em ${esc(langLabel(v.lang))}` : ""}…</div>`;
+    else if (v.stage === "error") body = `<div class="pvline err">${icon("alert", 14)} <span>${esc(v.error)} <b>Nada foi enviado.</b></span></div>`;
+    else if (v.stage === "ready") {
+      body = `<div class="pvsec"><small>Ouça antes de enviar · ${fmtDur(v.duration)} · voz gerada por IA</small><audio controls src="${v.url}"></audio>
+        <div class="pvtext">${waFormat(v.text)}</div></div>`;
+      acts += `<button class="btn" id="vcRegen" type="button">Regenerar</button><button class="btn primary" id="vcSend" type="button">${icon("send", 14)} Enviar áudio</button>`;
+    }
+    box.innerHTML = `<div class="pv" role="region" aria-label="Áudio">${body}<div class="pvact">${acts}</div></div>`;
+    $("#vcCancel").onclick = () => cancelVoice();
+    if ($("#vcStop")) $("#vcStop").onclick = () => stopRecording();
+    if ($("#vcRegen")) $("#vcRegen").onclick = () => generateVoice(v.textPt, true);
+    if ($("#vcSend")) {
+      $("#vcSend").onclick = () => sendVoice();
+      $("#vcSend").focus();
+    }
+  }
+
+  function setVoice(v) {
+    if (S.voice?.url && S.voice.url !== v?.url) URL.revokeObjectURL(S.voice.url);
+    S.voice = v;
+    renderPreview();
+    renderComposer();
+  }
+
+  function cancelVoice() {
+    if (S.voice?.rec) S.voice.rec.cancel();
+    clearInterval(S.voice?.timer);
+    setVoice(null);
+    $("#text").readOnly = false;
+  }
+
+  async function startRecording() {
+    if (S.voice || !A) return;
+    let rec;
+    const v = { stage: "recording", levels: [], level: 0, start: Date.now() };
+    try {
+      rec = await A.startRecording((l) => (v.level = l));
+    } catch (e) {
+      return toast(`Não foi possível usar o microfone: ${e.name === "NotAllowedError" ? "permissão negada." : e.message}`, "err");
+    }
+    v.rec = rec;
+    v.timer = setInterval(() => {
+      v.levels.push(v.level);
+      if (v.levels.length > 60) v.levels.shift();
+      const t = $("#vcTime");
+      if (!t) return;
+      t.textContent = fmtDur((Date.now() - v.start) / 1000);
+      $("#vcMeter").innerHTML = v.levels.map((l) => `<i style="height:${Math.max(8, Math.min(100, l * 160))}%"></i>`).join("");
+      if (Date.now() - v.start > 120000) stopRecording(); // no máximo 2 min
+    }, 100);
+    setVoice(v);
+  }
+
+  async function stopRecording() {
+    const v = S.voice;
+    if (v?.stage !== "recording") return;
+    clearInterval(v.timer);
+    const blob = await v.rec.stop();
+    setVoice({ stage: "transcribing" });
+    try {
+      const r = await call(C.OPS.TRANSCRIBE_DRAFT, { data: await blobToB64(blob), mime: blob.type });
+      const ta = $("#text");
+      ta.value = ta.value.trim() ? `${ta.value.trim()} ${r.text}` : r.text;
+      ta.dispatchEvent(new Event("input"));
+      S.voiceMode = true; // quem grava geralmente quer mandar áudio; dá para desligar no botão
+      setVoice(null);
+      ta.focus();
+      toast("Revise o texto e envie. Ele vai como áudio com a sua voz gerada.");
+    } catch (e) {
+      setVoice({ stage: "error", error: e.message });
+    }
+  }
+
+  async function generateVoice(textPt, fresh = false) {
+    const chatId = S.current.chatId;
+    S.preview = null;
+    $("#text").readOnly = true;
+    setVoice({ stage: "generating", textPt, lang: translating() ? C.contactLangOf(S.current, S.settings) : S.settings.myLang });
+    try {
+      const g = await call(C.OPS.VOICE_PREVIEW, { chatId, textPt, fresh });
+      // o Fish devolve MP3; aqui vira OGG/Opus, o formato da mensagem de voz do WhatsApp
+      const mp3 = await C.getMedia(g.mp3Key);
+      const ogg = await A.toOggOpus(mp3.blob);
+      if (ogg.duration > g.maxVoiceSec) throw new Error(`O áudio ficou com ${fmtDur(ogg.duration)}, acima do limite de ${fmtDur(g.maxVoiceSec)}. Encurte o texto.`);
+      await C.putMedia(`gen:${g.genId}`, ogg.blob, { text: g.text, chatId, duration: ogg.duration });
+      if (S.current?.chatId !== chatId) return;
+      setVoice({ stage: "ready", textPt, genId: g.genId, text: g.text, duration: ogg.duration, url: URL.createObjectURL(ogg.blob) });
+    } catch (e) {
+      if (S.current?.chatId !== chatId) return;
+      setVoice({ stage: "error", textPt, error: e.message });
+    }
+  }
+
+  async function sendVoice() {
+    const v = S.voice;
+    if (v?.stage !== "ready") return;
+    const chatId = S.current.chatId;
+    const ta = $("#text");
+    const temp = { id: `pending-${Date.now()}`, chatId, fromMe: true, ts: Date.now(), type: "audio", text: "", textPt: translating() ? v.textPt : undefined, audio: { ptt: true, duration: v.duration, generated: true, transcript: v.text, transcriptStatus: "done" }, ack: 0, _pending: true, _new: true };
+    S.messages.push(temp);
+    setVoice(null);
+    ta.readOnly = false;
+    ta.value = "";
+    S.voiceMode = false;
+    renderComposer();
+    renderMessages({ toBottom: true });
+    try {
+      const msg = await call(C.OPS.SEND_AUDIO, { chatId, genId: v.genId });
+      const i = S.messages.indexOf(temp);
+      if (i >= 0) {
+        if (S.messages.some((m) => m.id === msg.id)) S.messages.splice(i, 1);
+        else S.messages[i] = msg;
+      }
+    } catch (e) {
+      S.messages = S.messages.filter((m) => m !== temp);
+      ta.value = v.textPt;
+      S.voiceMode = true;
+      renderComposer();
+      toast(`Áudio não enviado: ${e.message}`, "err");
     }
     if (S.current?.chatId === chatId) renderMessages({ toBottom: true });
   }

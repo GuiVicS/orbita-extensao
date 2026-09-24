@@ -38,6 +38,13 @@ const FAKE = {
       const end = o.id ? all.findIndex((m) => m.id._serialized === o.id) : all.length;
       return all.slice(Math.max(0, end - o.count), end);
     },
+    sendFileMessage: async (id, file, o) => {
+      const m = { ...mk(id, `f${++sent}`, true, "", Date.now() / 1000 | 0, 1), type: o.isPtt ? "ptt" : "audio", body: undefined, duration: 2 };
+      window.__lastFile = { isPtt: o.isPtt, type: o.type, mime: o.mimetype, head: typeof file === "string" ? file.slice(0, 40) : "blob", oggMagic: typeof file === "string" && atob(file.slice(file.indexOf(",") + 1, file.indexOf(",") + 9)).startsWith("OggS") };
+      store[id].push(m);
+      setTimeout(() => (handlers["chat.new_message"] || []).forEach((f) => f(m)), 300);
+      return ok(m.id._serialized);
+    },
     downloadMedia: async (id) => (window.__downloads++, wav),
     getMessageById: async (id) => Object.values(store).flat().find((m) => m.id._serialized === id),
     sendTextMessage: async (id, text) => {

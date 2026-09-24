@@ -122,6 +122,7 @@
     }
     const storage = await chrome.storage.local.get(null);
     if (storage["orbita:ai"]) storage["orbita:ai"] = stripSecrets(storage["orbita:ai"]);
+    delete storage["orbita:chat:secrets"]; // chave do Fish Audio (Conversas)
     return {
       format: FORMAT,
       version: 1,
@@ -196,6 +197,7 @@
     const next = { ...backup.storage };
     const curAi = current["orbita:ai"];
     if (next["orbita:ai"] || curAi) next["orbita:ai"] = { ...(next["orbita:ai"] || {}), ...(curAi?.apiKey ? { apiKey: curAi.apiKey } : {}), ...(curAi?.keys ? { keys: curAi.keys } : {}) };
+    if (current["orbita:chat:secrets"]) next["orbita:chat:secrets"] = current["orbita:chat:secrets"];
     const remove = Object.keys(current).filter((k) => !(k in next));
     if (remove.length) await chrome.storage.local.remove(remove);
     await chrome.storage.local.set(next);
