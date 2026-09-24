@@ -38,11 +38,11 @@ const wa = await ctx.newPage();
 wa.on("pageerror", (e) => errors.push("wa: " + e.message));
 await wa.goto("https://web.whatsapp.com/");
 await waitFor(async () => (await call(dash, "wa.status")).ready);
-let chats = await waitFor(async () => { const c = await call(dash, "chat.list"); return c.length === 2 && c; });
+let chats = await waitFor(async () => { const c = await call(dash, "chat.list"); return c.length === 3 && c; });
 console.log("chats:", chats.map((c) => `${c.chatId} name=${c.name} phone=${c.phone ?? "-"} unread=${c.unreadCount} client=${c.client?.name ?? "-"} preview="${c.lastPreview}"`));
 assert.equal(chats[0].chatId, "5511999998888@c.us");
 assert.equal(chats[0].client?.name, "John (CRM)", "vínculo com CRM pela variante do 9º dígito");
-assert.equal(chats[1].client, null, "@lid sem número não liga ao CRM");
+assert.equal(chats.find((c) => c.chatId === "123456789@lid").client, null, "@lid sem número não liga ao CRM");
 
 let open = await call(dash, "chat.open", { chatId: "5511999998888@c.us" });
 console.log("open:", open.messages.map((m) => `${m.fromMe ? "→" : "←"} ${m.text} (ack ${m.ack})`), "warning:", open.warning);
@@ -84,7 +84,7 @@ console.log("offline:", offline.warning, "|", offline.messages.length, "mensagen
 // backup inclui conversas
 const bk = await dash.evaluate(async () => { const b = await OrbitaBackup.create(); return { chats: b.chatDb?.chats?.length, messages: b.chatDb?.messages?.length }; });
 console.log("backup:", bk);
-assert.ok(bk.chats === 2 && bk.messages >= 5);
+assert.ok(bk.chats === 3 && bk.messages >= 5);
 console.log("ERRORS", errors);
 await ctx.close();
 console.log("FASE 1 OK");
