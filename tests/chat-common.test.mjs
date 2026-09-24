@@ -34,7 +34,8 @@ test("edição invalida a tradução", () => {
 });
 
 test("prévia por tipo", () => {
-  assert.equal(C.previewOf({ type: "audio", audio: { duration: 12.4 } }), "🎤 Áudio (12s)");
+  assert.equal(C.previewOf({ type: "audio", audio: { duration: 400 } }), "🎤 Áudio (6:40)");
+  assert.equal(C.previewOf({ type: "audio", audio: { transcript: "Hi" } }), "🎤 “Hi”");
   assert.equal(C.previewOf({ revoked: true }), "🚫 Mensagem apagada");
   assert.equal(C.previewOf({ type: "other", label: "Foto" }), "📎 Foto");
 });

@@ -137,11 +137,12 @@
     broadcast(change.isNew ? C.EVENTS.MESSAGE_NEW : C.EVENTS.MESSAGE_UPDATED, { message: change.message });
     broadcast(C.EVENTS.CHAT_UPDATED, { chat });
     if (chat?.translation?.enabled && needsTranslation(change.message)) queueTranslation(change.message.id);
+    if (change.isNew && !message.fromMe && message.type === "audio" && isOpenSomewhere(message.chatId)) queueAudios([change.message]);
   }
 
   // ------------------------------------------------------ tradução
   const T = globalThis.OrbitaTranslate;
-  const needsTranslation = (m) => !m.fromMe && !m.revoked && Boolean(m.text?.trim()) && (!m.translationStatus || m.translationStatus === "stale");
+  const needsTranslation = (m) => !m.fromMe && !m.revoked && Boolean(C.sourceText(m).trim()) && (!m.translationStatus || m.translationStatus === "stale");
 
   // Fila das mensagens recebidas: no máximo 2 traduções ao mesmo tempo, e a
   // mesma mensagem nunca entra duas vezes.
@@ -171,7 +172,7 @@
   async function contextFor(chatId, beforeTs, n) {
     if (!n) return [];
     const msgs = await C.messagesPage(chatId, { beforeTs, limit: n });
-    return msgs.filter((m) => !m.revoked && m.text).map((m) => ({ fromMe: m.fromMe, text: m.textPt || m.translatedText || m.text }));
+    return msgs.filter((m) => !m.revoked && C.sourceText(m)).map((m) => ({ fromMe: m.fromMe, text: m.textPt || m.translatedText || C.sourceText(m) }));
   }
 
   async function translateIncoming(id) {
@@ -180,7 +181,7 @@
     if (!msg) return;
     broadcast(C.EVENTS.MESSAGE_UPDATED, { message: msg });
     try {
-      const r = await T.translate({ text: msg.text, from: "auto", to: settings.myLang, tone: "neutral", context: await contextFor(msg.chatId, msg.ts, settings.contextMessages), glossary: settings.glossary });
+      const r = await T.translate({ text: C.sourceText(msg), from: "auto", to: settings.myLang, tone: "neutral", context: await contextFor(msg.chatId, msg.ts, settings.contextMessages), glossary: settings.glossary });
       msg = await C.patchMessage(id, (m) => ({ ...m, translatedText: r.text, lang: r.detectedLang || m.lang, translationStatus: "done" }));
       // se for a última mensagem da conversa, a prévia da lista passa a ser a tradução
       const last = await C.updateChat(msg.chatId, (c) => (c?.lastMessageId === id ? { ...c, lastPreview: C.previewOf(msg) } : null));
@@ -194,6 +195,89 @@
       msg = await C.patchMessage(id, (m) => ({ ...m, translationStatus: "failed", translationError: e.message, translationErrorCode: e.code }));
     }
     if (msg) broadcast(C.EVENTS.MESSAGE_UPDATED, { message: msg });
+  }
+
+  // ------------------------------------------------------ áudio recebido
+  const W = globalThis.OrbitaTranscribe;
+  const MAX_MEDIA_BYTES = 16 * 1024 * 1024;
+
+  const b64ToBlob = (b64, mime) => {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  };
+
+  // Garante a mídia da mensagem no cache local, baixando da aba se preciso.
+  async function ensureMedia(messageId) {
+    const hit = await C.getMedia(messageId);
+    if (hit?.blob) return hit;
+    const r = await exec({ op: C.TAB_CMDS.DOWNLOAD_MEDIA, id: messageId, maxBytes: MAX_MEDIA_BYTES }, 120000);
+    await C.putMedia(messageId, b64ToBlob(r.data, r.mime));
+    return C.getMedia(messageId);
+  }
+
+  const tQueue = [];
+  const tQueued = new Set();
+  let tActive = 0;
+  function queueTranscription(id, { front = false, manual = false } = {}) {
+    if (tQueued.has(id)) return;
+    tQueued.add(id);
+    const job = { id, manual };
+    front ? tQueue.unshift(job) : tQueue.push(job);
+    tPump();
+  }
+  function tPump() {
+    while (tActive < 1 && tQueue.length) {
+      const job = tQueue.shift();
+      tActive++;
+      transcribeMessage(job)
+        .catch(() => {})
+        .finally(() => {
+          tActive--;
+          tQueued.delete(job.id);
+          tPump();
+        });
+    }
+  }
+
+  const needsTranscription = (m) => m.type === "audio" && !m.revoked && (!m.audio?.transcriptStatus || m.audio.transcriptStatus === "failed");
+
+  async function transcribeMessage({ id, manual }) {
+    const settings = await C.loadSettings();
+    let msg = await C.patchMessage(id, (m) => {
+      if (m.type !== "audio" || m.revoked) return null;
+      if (!manual && m.audio?.transcriptStatus) return null;
+      if (!manual && (m.audio?.duration || 0) > settings.maxAudioSec) return { ...m, audio: { ...m.audio, transcriptStatus: "skipped" } };
+      return { ...m, audio: { ...m.audio, transcriptStatus: "pending", transcriptError: undefined } };
+    });
+    if (!msg) return;
+    broadcast(C.EVENTS.MESSAGE_UPDATED, { message: msg });
+    if (msg.audio.transcriptStatus === "skipped") return;
+    try {
+      const media = await ensureMedia(id);
+      const r = await W.transcribe(media.blob, { provider: settings.transcriptionProvider });
+      msg = await C.patchMessage(id, (m) => ({
+        ...m,
+        lang: r.lang || m.lang,
+        audio: { ...m.audio, transcript: r.text, transcriptLang: r.lang, transcriptStatus: r.text ? "done" : "empty" },
+        // transcrição nova = tradução antiga (se houver) não vale mais
+        translationStatus: m.translationStatus ? "stale" : undefined,
+      }));
+    } catch (e) {
+      msg = await C.patchMessage(id, (m) => ({ ...m, audio: { ...m.audio, transcriptStatus: "failed", transcriptError: e.message, transcriptErrorCode: e.code } }));
+    }
+    broadcast(C.EVENTS.MESSAGE_UPDATED, { message: msg });
+    const last = await C.updateChat(msg.chatId, (c) => (c?.lastMessageId === id ? { ...c, lastPreview: C.previewOf(msg) } : null));
+    if (last) broadcast(C.EVENTS.CHAT_UPDATED, { chat: last });
+    const chat = await C.getChat(msg.chatId);
+    if (chat?.translation?.enabled && needsTranslation(msg)) queueTranslation(id, { front: true });
+  }
+
+  async function queueAudios(messages) {
+    const settings = await C.loadSettings();
+    if (!settings.transcribeOnOpen) return;
+    for (const m of [...messages].reverse()) if (!m.fromMe && needsTranscription(m) && m.audio?.transcriptStatus !== "failed") queueTranscription(m.id);
   }
 
   function queueChat(messages) {
@@ -333,6 +417,7 @@
         const messages = await C.messagesPage(chatId, { limit: HISTORY_PAGE });
         const chat = await C.getChat(chatId);
         if (chat?.translation?.enabled) queueChat(messages);
+        if (status.ready) queueAudios(messages);
         return { chat, messages, warning };
       }
 
@@ -347,6 +432,7 @@
           messages = await C.messagesPage(chatId, { beforeTs, limit: HISTORY_PAGE });
         }
         if (chat?.translation?.enabled) queueChat(messages);
+        if (status.ready) queueAudios(messages);
         return { messages, complete: Boolean(chat?.historyComplete) && messages.length < HISTORY_PAGE };
       }
 
@@ -393,6 +479,15 @@
         if (chat.translation.enabled) queueChat(await C.messagesPage(req.chatId, { limit: HISTORY_PAGE }));
         return chat;
       }
+
+      case C.OPS.MEDIA_FETCH: {
+        const media = await ensureMedia(String(req.messageId));
+        return { key: media.key, mime: media.mime, size: media.size };
+      }
+
+      case C.OPS.TRANSCRIBE:
+        queueTranscription(String(req.messageId), { front: true, manual: true });
+        return true;
 
       case C.OPS.RETRANSLATE: {
         const m = await C.patchMessage(req.messageId, (m) => (m.fromMe ? null : { ...m, translationStatus: "stale" }));

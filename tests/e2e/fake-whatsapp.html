@@ -9,6 +9,13 @@ const store = {
   "123456789@lid": [mk("123456789@lid", 1, false, "Hello there", now - 7200)],
 };
 store["5511912345678@c.us"] = Array.from({ length: 120 }, (_, i) => mk("5511912345678@c.us", i, i % 3 === 0, `Mensagem número ${i + 1}`, now - 86400 * 3 + i * 600));
+// mensagens de voz: um tom WAV de 1 s gerado aqui mesmo
+const wav = (() => { const sr = 8000, n = sr, b = new DataView(new ArrayBuffer(44 + n * 2)); const w = (o, t) => [...t].forEach((c, i) => b.setUint8(o + i, c.charCodeAt(0)));
+  w(0, "RIFF"); b.setUint32(4, 36 + n * 2, true); w(8, "WAVEfmt "); b.setUint32(16, 16, true); b.setUint16(20, 1, true); b.setUint16(22, 1, true); b.setUint32(24, sr, true); b.setUint32(28, sr * 2, true); b.setUint16(32, 2, true); b.setUint16(34, 16, true); w(36, "data"); b.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) b.setInt16(44 + i * 2, Math.sin(i / sr * 2 * Math.PI * 440) * 8000, true); return new Blob([b.buffer], { type: "audio/wav" }); })();
+const voice = (chat, n, t, duration) => ({ ...mk(chat, n, false, "", t), type: "ptt", body: undefined, duration });
+store["5511999998888@c.us"].push(voice("5511999998888@c.us", "v1", now - 3300, 3), voice("5511999998888@c.us", "v2", now - 3200, 400));
+window.__downloads = 0;
 if (window.__extra) store["5511999998888@c.us"].push(mk("5511999998888@c.us", 4, false, "Missed while offline", now + 5));
 const chats = {
   "5511999998888@c.us": { id: { _serialized: "5511999998888@c.us" }, contact: { name: "John Smith", pushname: "John" }, unreadCount: 2 },
@@ -31,6 +38,7 @@ const FAKE = {
       const end = o.id ? all.findIndex((m) => m.id._serialized === o.id) : all.length;
       return all.slice(Math.max(0, end - o.count), end);
     },
+    downloadMedia: async (id) => (window.__downloads++, wav),
     getMessageById: async (id) => Object.values(store).flat().find((m) => m.id._serialized === id),
     sendTextMessage: async (id, text) => {
       const m = mk(id, `s${++sent}`, true, text, Date.now() / 1000 | 0, 1);

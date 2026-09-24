@@ -146,6 +146,19 @@
         if (code !== undefined && code !== "OK" && code !== WPP()?.whatsapp?.enums?.SendMsgResult?.OK) throw new Error(`O WhatsApp recusou a mensagem (${String(code)}).`);
         return msg || { id: ser(res?.id), chatId: cmd.chatId, fromMe: true, ts: Date.now(), type: "text", rawType: "chat", text: cmd.text, ack: 0, revoked: false };
       }
+      case "downloadMedia": {
+        // a mídia volta em base64: a porta do Chrome só transporta JSON
+        const blob = await WPP().chat.downloadMedia(cmd.id);
+        if (!blob?.size) throw new Error("O WhatsApp não entregou o arquivo desta mensagem.");
+        if (cmd.maxBytes && blob.size > cmd.maxBytes) throw new Error("Arquivo grande demais.");
+        const dataUrl = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(String(r.result));
+          r.onerror = () => rej(r.error);
+          r.readAsDataURL(blob);
+        });
+        return { mime: blob.type || "audio/ogg", size: blob.size, data: dataUrl.slice(dataUrl.indexOf(",") + 1) };
+      }
       default:
         throw new Error(`Comando desconhecido: ${cmd.op}`);
     }

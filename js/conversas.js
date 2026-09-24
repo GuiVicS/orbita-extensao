@@ -52,6 +52,8 @@
     external: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
     alert: '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
     spinner: '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
+    play: '<polygon points="6 3 20 12 6 21 6 3"/>',
+    pause: '<rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/>',
     languages: '<path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/>',
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
@@ -287,6 +289,80 @@
     return waFormat(m.text);
   }
 
+  const fmtDur = (sec) => `${Math.floor((sec || 0) / 60)}:${String(Math.round((sec || 0) % 60)).padStart(2, "0")}`;
+  const TX_ERRORS = { NOT_CONFIGURED: "configure a chave da Groq ou da OpenAI nas Opções", AUTH: "chave inválida", RATE_LIMIT: "limite atingido", TIMEOUT: "demorou demais", TOO_LARGE: "áudio grande demais" };
+
+  // Balão de áudio: player + transcrição (e a tradução da transcrição).
+  function audioBlock(m) {
+    const a = m.audio || {};
+    const playing = player.id === m.id;
+    const pct = playing && player.el.duration ? (player.el.currentTime / player.el.duration) * 100 : 0;
+    const btn = playing && player.loading ? icon("spinner", 16, 'class="spin"') : icon(playing && !player.el.paused ? "pause" : "play", 16);
+    const head = `<div class="player" data-player="${esc(m.id)}"><button type="button" class="play" data-play="${esc(m.id)}" aria-label="${playing && !player.el.paused ? "Pausar" : "Ouvir"} áudio">${btn}</button>
+      <div class="bar"><i style="width:${pct}%"></i></div><span class="dur">${fmtDur(playing && player.el.currentTime ? player.el.currentTime : a.duration)}</span>${a.ptt ? `<span class="mic" title="Mensagem de voz">${icon("mic", 13)}</span>` : ""}</div>`;
+    const transcribeBtn = (label) => `<button class="link" data-transcribe="${esc(m.id)}">${label}</button>`;
+    let tx;
+    switch (a.transcriptStatus) {
+      case "pending":
+        tx = `<span class="trmeta">${icon("spinner", 12, 'class="spin"')} Transcrevendo…</span>`;
+        break;
+      case "done":
+        tx = `<span class="transcript">${textBlock({ ...m, text: a.transcript })}</span>`;
+        break;
+      case "empty":
+        tx = `<span class="trmeta">${icon("mic", 12)} Sem fala detectada</span>`;
+        break;
+      case "failed":
+        tx = `<span class="trmeta err" title="${esc(a.transcriptError || "")}">${icon("alert", 12)} Não transcrito (${esc(TX_ERRORS[a.transcriptErrorCode] || "erro")}) · ${transcribeBtn("tentar de novo")}</span>`;
+        break;
+      case "skipped":
+        tx = `<span class="trmeta">Áudio longo · ${transcribeBtn("transcrever")}</span>`;
+        break;
+      default:
+        tx = `<span class="trmeta">${transcribeBtn("Transcrever")}</span>`;
+    }
+    return `${head}${tx}${m.text ? `<span class="cap">${waFormat(m.text)}</span>` : ""}`;
+  }
+
+  // ---- player: um só elemento <audio> para a tela toda
+  const player = { el: new Audio(), id: null, url: null, loading: false };
+  function paintPlayer() {
+    document.querySelectorAll("[data-player]").forEach((box) => {
+      const on = box.dataset.player === player.id;
+      const btn = box.querySelector(".play");
+      btn.innerHTML = on && player.loading ? icon("spinner", 16, 'class="spin"') : icon(on && !player.el.paused ? "pause" : "play", 16);
+      btn.setAttribute("aria-label", on && !player.el.paused ? "Pausar áudio" : "Ouvir áudio");
+      box.querySelector(".bar i").style.width = on && player.el.duration ? `${(player.el.currentTime / player.el.duration) * 100}%` : "0%";
+      if (on && player.el.currentTime) box.querySelector(".dur").textContent = fmtDur(player.el.currentTime);
+    });
+  }
+  ["timeupdate", "play", "pause", "ended"].forEach((ev) => player.el.addEventListener(ev, paintPlayer));
+  player.el.addEventListener("ended", () => {
+    player.el.currentTime = 0;
+    paintPlayer();
+  });
+
+  async function togglePlay(id) {
+    if (player.id === id && !player.loading) return player.el.paused ? player.el.play() : player.el.pause();
+    player.el.pause();
+    if (player.url) URL.revokeObjectURL(player.url);
+    Object.assign(player, { id, url: null, loading: true });
+    paintPlayer();
+    try {
+      await call(C.OPS.MEDIA_FETCH, { messageId: id }); // baixa da aba do WhatsApp se ainda não está no cache
+      const media = await C.getMedia(id);
+      if (player.id !== id) return;
+      player.url = URL.createObjectURL(media.blob);
+      player.el.src = player.url;
+      player.loading = false;
+      await player.el.play();
+    } catch (e) {
+      if (player.id === id) Object.assign(player, { id: null, loading: false });
+      toast(`Não foi possível tocar o áudio: ${e.message}`, "err");
+    }
+    paintPlayer();
+  }
+
   function bubbleHtml(m, prev) {
     let head = "";
     if (!prev || dayKey(prev.ts) !== dayKey(m.ts)) head += `<div class="day">${esc(dayLabel(m.ts))}</div>`;
@@ -294,7 +370,7 @@
     const meta = `<span class="meta">${m.edited ? "editada · " : ""}${esc(timeFmt.format(new Date(m.ts)))}${tick(m)}</span>`;
     let body;
     if (m.revoked) body = `${icon("ban", 14, 'style="display:inline;vertical-align:-2px"')} Mensagem apagada${m.text ? `<span class="cap" style="opacity:.7">“${esc(m.text)}”</span>` : ""}`;
-    else if (m.type === "audio") body = `<span class="kind">${icon("mic", 15)} ${m.audio?.ptt ? "Mensagem de voz" : "Áudio"}${m.audio?.duration ? ` · ${Math.floor(m.audio.duration / 60)}:${String(Math.round(m.audio.duration % 60)).padStart(2, "0")}` : ""}</span>${m.text ? `<span class="cap">${textBlock(m)}</span>` : ""}`;
+    else if (m.type === "audio") body = audioBlock(m);
     else if (m.type === "other") body = `<span class="kind">${icon("clip", 14)} ${esc(m.label || "Mídia")}${m.filename ? `: ${esc(m.filename)}` : ""}</span>${m.text ? `<span class="cap">${textBlock(m)}</span>` : ""}`;
     else body = textBlock(m);
     const cls = ["b", m.fromMe ? "me" : "", first ? "first" : "", m.revoked ? "revoked" : "", m._pending ? "pending" : "", m._new ? "new" : ""].filter(Boolean).join(" ");
@@ -466,6 +542,10 @@
         S.showOriginal.has(id) ? S.showOriginal.delete(id) : S.showOriginal.add(id);
         return renderMessages({ keepScroll: true });
       }
+      const play = e.target.closest("[data-play]");
+      if (play) return togglePlay(play.dataset.play);
+      const tr = e.target.closest("[data-transcribe]");
+      if (tr) return call(C.OPS.TRANSCRIBE, { messageId: tr.dataset.transcribe }).catch((err) => toast(err.message, "err"));
       const retry = e.target.closest("[data-retry]");
       if (retry) call(C.OPS.RETRANSLATE, { messageId: retry.dataset.retry }).catch((err) => toast(err.message, "err"));
     });

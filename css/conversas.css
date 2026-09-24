@@ -178,3 +178,12 @@ body.embed .app { height: calc(100vh - 32px); margin: 16px 0; border-radius: var
 .dialog h2 { margin: 12px 0 8px; font-size: 18px; }
 .dialog ul { margin: 0 0 18px; padding-left: 18px; display: grid; gap: 8px; font-size: 13.5px; color: var(--muted-foreground); }
 .dialog ul b { color: var(--foreground); }
+
+/* ---------- áudio ---------- */
+.player { display: flex; align-items: center; gap: 10px; min-width: 240px; padding: 2px 0; }
+.player .play { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--grad); color: #fff; display: grid; place-items: center; cursor: pointer; flex: none; }
+.player .bar { flex: 1; height: 4px; border-radius: 4px; background: color-mix(in srgb, var(--wa-fg) 18%, transparent); overflow: hidden; }
+.player .bar i { display: block; height: 100%; background: var(--tick-read); transition: width .2s linear; }
+.player .dur { font-size: 11.5px; color: var(--wa-meta); font-variant-numeric: tabular-nums; }
+.player .mic { color: var(--tick-read); }
+.transcript { display: block; margin-top: 6px; padding-top: 6px; border-top: 1px solid color-mix(in srgb, var(--wa-fg) 10%, transparent); font-size: 13.5px; }

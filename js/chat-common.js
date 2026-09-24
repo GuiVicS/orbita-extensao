@@ -31,6 +31,8 @@
     SET_TRANSLATION: "chat.setTranslation", // liga/desliga e ajusta idioma/tom da conversa
     TRANSLATE_PREVIEW: "translate.preview", // PT → idioma do contato + retro-tradução
     RETRANSLATE: "message.retranslate", // tenta de novo uma tradução que falhou
+    MEDIA_FETCH: "media.fetch", // baixa (se preciso) a mídia de uma mensagem para o cache
+    TRANSCRIBE: "audio.transcribe", // transcreve (e traduz) um áudio
   };
 
   // Preferências das Conversas (chrome.storage.local). Sem chaves de API aqui:
@@ -44,6 +46,9 @@
     contextMessages: 6, // mensagens anteriores enviadas à IA como contexto
     glossary: [], // [{ term, translation?, keep? }]
     privacyAccepted: false,
+    transcriptionProvider: "auto", // "auto" (Groq, senão OpenAI) | "groq" | "openai"
+    transcribeOnOpen: true, // transcrever os áudios recebidos ao abrir a conversa
+    maxAudioSec: 180, // áudios mais longos só com clique
   };
   async function loadSettings() {
     const r = await chrome.storage.local.get(SETTINGS_KEY);
@@ -75,6 +80,7 @@
     LIST_CHATS: "listChats",
     GET_MESSAGES: "getMessages",
     SEND_TEXT: "sendText",
+    DOWNLOAD_MEDIA: "downloadMedia",
   };
 
   // ------------------------------------------------------------ telefones
@@ -117,10 +123,16 @@
     return merged;
   }
 
+  // Texto que representa a mensagem para tradução: a transcrição, nos áudios.
+  const sourceText = (m) => (m?.type === "audio" ? m.audio?.transcript || "" : m?.text || "");
+
   function previewOf(msg) {
     if (!msg) return "";
     if (msg.revoked) return "🚫 Mensagem apagada";
-    if (msg.type === "audio") return `🎤 Áudio${msg.audio?.duration ? ` (${Math.round(msg.audio.duration)}s)` : ""}`;
+    if (msg.type === "audio") {
+      const said = (!msg.fromMe && msg.translationStatus === "done" && msg.translatedText) || msg.audio?.transcript;
+      return `🎤 ${said ? `“${said}”` : `Áudio${msg.audio?.duration ? ` (${Math.floor(msg.audio.duration / 60)}:${String(Math.round(msg.audio.duration % 60)).padStart(2, "0")})` : ""}`}`;
+    }
     // na lista, você lê no seu idioma: a tradução das recebidas e o que você escreveu nas enviadas
     const text = (msg.fromMe ? msg.textPt : msg.translationStatus === "done" && msg.translatedText) || msg.text;
     if (msg.type === "other") return text ? `📎 ${text}` : `📎 ${msg.label || "Mídia"}`;
@@ -258,6 +270,33 @@
     return req(db.transaction("messages").objectStore("messages").index("byChatTs").count(range));
   }
 
+  // ---- cache de mídia (áudios baixados do WhatsApp, voz gerada…)
+  const MEDIA_CACHE_LIMIT = 200 * 1024 * 1024; // acima disso, apaga os mais antigos
+
+  async function getMedia(key) {
+    const db = await openDb();
+    return req(db.transaction("mediaCache").objectStore("mediaCache").get(key));
+  }
+
+  async function putMedia(key, blob, extra = {}) {
+    const db = await openDb();
+    const tx = db.transaction("mediaCache", "readwrite");
+    const store = tx.objectStore("mediaCache");
+    store.put({ key, blob, mime: blob.type, size: blob.size, createdAt: Date.now(), ...extra });
+    await txDone(tx);
+    // limpeza: soma os tamanhos do mais novo para o mais antigo e apaga o excedente
+    const tx2 = db.transaction("mediaCache", "readwrite");
+    let total = 0;
+    tx2.objectStore("mediaCache").index("byCreated").openCursor(null, "prev").onsuccess = (ev) => {
+      const c = ev.target.result;
+      if (!c) return;
+      total += c.value.size || 0;
+      if (total > MEDIA_CACHE_LIMIT) c.delete();
+      c.continue();
+    };
+    await txDone(tx2);
+  }
+
   async function getMeta(key) {
     const db = await openDb();
     return (await req(db.transaction("meta").objectStore("meta").get(key)))?.value;
@@ -319,7 +358,7 @@
 
   globalThis.OrbitaChat = {
     CHANNEL, PORT_TAB, PORT_UI, OPS, EVENTS, TAB_CMDS,
-    SETTINGS_KEY, DEFAULT_SETTINGS, loadSettings, saveSettings, contactLangOf,
+    SETTINGS_KEY, DEFAULT_SETTINGS, loadSettings, saveSettings, contactLangOf, sourceText, getMedia, putMedia,
     digits, phoneVariants, formatPhone, mergeMessage, previewOf,
     DB_NAME, openDb, getChat, listChats, updateChat, upsertMessages, patchMessage, messagesPage, countMessages, getMeta, setMeta,
     openMainDbReadOnly, loadClientIndex, findClient,

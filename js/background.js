@@ -1,6 +1,6 @@
 // Service worker da extensão: carrega o build original e acrescenta os
 // handlers das respostas rápidas sem alterar o bundle minificado.
-importScripts("service_worker.js", "chat-common.js", "chat-translate.js", "chat-sync.js");
+importScripts("service_worker.js", "chat-common.js", "chat-translate.js", "chat-transcribe.js", "chat-sync.js");
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.channel !== "orbita:qr" || sender.id !== chrome.runtime.id) return false;
