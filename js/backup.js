@@ -6,9 +6,50 @@
   "use strict";
   const DB = "orbita";
   const FORMAT = "orbita-backup";
+  // Banco das Conversas: entram conversas e mensagens; caches (mídia baixada,
+  // traduções) ficam de fora porque podem ser refeitos e crescem muito.
+  const CHAT_DB = "orbita-chat";
+  const CHAT_STORES = ["chats", "messages", "meta"];
 
   const req = (r) => new Promise((resolve, reject) => ((r.onsuccess = () => resolve(r.result)), (r.onerror = () => reject(r.error))));
-  const openDb = () => req(indexedDB.open(DB));
+  // Abre um banco existente sem nunca criá-lo: indexedDB.open sem versão criaria
+  // um banco vazio (v1) se ele não existisse, e isso atrapalharia a migração dos
+  // bundles. Devolve null quando o banco não existe.
+  const openExisting = (name) =>
+    new Promise((resolve, reject) => {
+      const r = indexedDB.open(name);
+      r.onupgradeneeded = () => r.transaction.abort();
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => (r.error?.name === "AbortError" ? resolve(null) : reject(r.error));
+    });
+  async function openDb() {
+    const db = await openExisting(DB);
+    if (!db) throw new Error("O banco da Órbita ainda não foi criado. Abra o painel uma vez e tente de novo.");
+    return db;
+  }
+
+  async function dumpStores(db, names) {
+    const out = {};
+    for (const name of names) {
+      if (!db.objectStoreNames.contains(name)) continue;
+      const rows = await req(db.transaction(name, "readonly").objectStore(name).getAll());
+      out[name] = await Promise.all(rows.map(encode));
+    }
+    return out;
+  }
+
+  async function restoreStores(db, data) {
+    const names = [...db.objectStoreNames].filter((n) => n in data);
+    if (!names.length) return;
+    const tx = db.transaction(names, "readwrite");
+    const done = new Promise((resolve, reject) => ((tx.oncomplete = resolve), (tx.onerror = () => reject(tx.error)), (tx.onabort = () => reject(tx.error || new Error("Restauração cancelada.")))));
+    for (const name of names) {
+      const store = tx.objectStore(name);
+      store.clear();
+      for (const row of data[name] || []) store.put(decode(row));
+    }
+    await done;
+  }
 
   function bytesToB64(bytes) {
     let s = "";
@@ -64,14 +105,20 @@
 
   async function create() {
     const db = await openDb();
-    const stores = {};
+    let stores;
     try {
-      for (const name of db.objectStoreNames) {
-        const rows = await req(db.transaction(name, "readonly").objectStore(name).getAll());
-        stores[name] = await Promise.all(rows.map(encode));
-      }
+      stores = await dumpStores(db, [...db.objectStoreNames]);
     } finally {
       db.close();
+    }
+    let chat = null;
+    const chatDb = await openExisting(CHAT_DB).catch(() => null);
+    if (chatDb) {
+      try {
+        chat = await dumpStores(chatDb, CHAT_STORES);
+      } finally {
+        chatDb.close();
+      }
     }
     const storage = await chrome.storage.local.get(null);
     if (storage["orbita:ai"]) storage["orbita:ai"] = stripSecrets(storage["orbita:ai"]);
@@ -82,6 +129,7 @@
       createdAt: new Date().toISOString(),
       dbVersion: db.version,
       indexedDB: stores,
+      chatDb: chat,
       storage,
       theme: (() => {
         try {
@@ -127,22 +175,21 @@
     }
     if (backup?.format !== FORMAT || typeof backup.indexedDB !== "object" || typeof backup.storage !== "object") throw new Error("Este arquivo não é um backup da Órbita.");
     const when = backup.createdAt ? new Date(backup.createdAt).toLocaleString("pt-BR") : "data desconhecida";
-    if (!confirm(`Restaurar o backup de ${when}?\n\nTodos os dados atuais da Órbita (listas, campanhas, CRM, agenda, respostas rápidas e preferências) serão SUBSTITUÍDOS pelos do backup. Pause campanhas em andamento antes.`)) return null;
+    if (!confirm(`Restaurar o backup de ${when}?\n\nTodos os dados atuais da Órbita (listas, campanhas, CRM, agenda, conversas, respostas rápidas e preferências) serão SUBSTITUÍDOS pelos do backup. Pause campanhas em andamento antes.`)) return null;
 
     const db = await openDb();
     try {
       if (backup.dbVersion > db.version) throw new Error("Este backup é de uma versão mais nova da Órbita. Atualize a extensão antes de restaurar.");
-      const names = [...db.objectStoreNames];
-      const tx = db.transaction(names, "readwrite");
-      const done = new Promise((resolve, reject) => ((tx.oncomplete = resolve), (tx.onerror = () => reject(tx.error)), (tx.onabort = () => reject(tx.error || new Error("Restauração cancelada.")))));
-      for (const name of names) {
-        const store = tx.objectStore(name);
-        store.clear();
-        for (const row of backup.indexedDB[name] || []) store.put(decode(row));
-      }
-      await done;
+      const data = Object.fromEntries([...db.objectStoreNames].map((n) => [n, backup.indexedDB[n] || []]));
+      await restoreStores(db, data);
     } finally {
       db.close();
+    }
+
+    // Conversas: backups antigos não têm chatDb — aí o que existe é mantido.
+    if (backup.chatDb) {
+      const chatDb = globalThis.OrbitaChat ? await globalThis.OrbitaChat.openDb() : await openExisting(CHAT_DB);
+      if (chatDb) await restoreStores(chatDb, Object.fromEntries(CHAT_STORES.map((n) => [n, backup.chatDb[n] || []])));
     }
 
     const current = await chrome.storage.local.get(null);

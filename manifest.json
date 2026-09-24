@@ -66,6 +66,25 @@
         "https://web.whatsapp.com/*"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "js": [
+        "js/chat-page.js"
+      ],
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    },
+    {
+      "js": [
+        "js/chat-content.js"
+      ],
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "permissions": [

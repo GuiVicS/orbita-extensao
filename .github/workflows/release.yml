@@ -39,7 +39,7 @@ jobs:
 
       - name: Zip extension
         if: steps.version.outputs.exists == 'false'
-        run: zip -r orbita-extensao.zip . -x '.git/*' '.github/*' 'patches/*' 'updater/*' '.gitignore' '.gitattributes' 'README.md'
+        run: zip -r orbita-extensao.zip . -x '.git/*' '.github/*' 'patches/*' 'updater/*' 'tests/*' '.gitignore' '.gitattributes' 'README.md'
 
       - name: Create Release
         if: steps.version.outputs.exists == 'false'

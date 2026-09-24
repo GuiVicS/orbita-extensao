@@ -1,0 +1,44 @@
+<!doctype html><html><head><meta charset=utf-8></head><body><div id="pane-side"></div><div id="main"><header>Chat</header><div id="conv"></div><footer><div contenteditable="true"></div></footer></div>
+<script>
+// WhatsApp simulado para testes: WPP com eventos, lista de conversas, histórico e envio.
+const handlers = {};
+const now = Date.now() / 1000 | 0;
+const mk = (chat, n, fromMe, body, t, ack = 3) => ({ id: { _serialized: `${fromMe}_${chat}_${n}`, fromMe, remote: chat }, type: "chat", body, t, ack, isNewMsg: true });
+const store = {
+  "5511999998888@c.us": [mk("5511999998888@c.us", 1, false, "Hi, I saw your ad", now - 3600), mk("5511999998888@c.us", 2, true, "Olá!", now - 3500), mk("5511999998888@c.us", 3, false, "Can you send the price?", now - 3400)],
+  "123456789@lid": [mk("123456789@lid", 1, false, "Hello there", now - 7200)],
+};
+if (window.__extra) store["5511999998888@c.us"].push(mk("5511999998888@c.us", 4, false, "Missed while offline", now + 5));
+const chats = {
+  "5511999998888@c.us": { id: { _serialized: "5511999998888@c.us" }, contact: { name: "John Smith", pushname: "John" }, unreadCount: 2 },
+  "123456789@lid": { id: { _serialized: "123456789@lid" }, contact: { pushname: "Anna" }, formattedTitle: "Anna", unreadCount: 0 },
+};
+for (const [id, c] of Object.entries(chats)) { c.t = store[id].at(-1).t; c.msgs = { last: () => store[id].at(-1) }; }
+const ok = (id) => ({ id: { _serialized: id }, sendMsgResult: Promise.resolve({ messageSendResult: "OK" }) });
+let sent = 0;
+const FAKE = {
+  isReady: true, conn: { isMainReady: () => true, getMyUserId: () => ({ _serialized: "5511000000000@c.us" }) },
+  on: (ev, fn) => ((handlers[ev] ||= []).push(fn)),
+  loader: { onReady() {}, onInjected() {}, injectLoader() {} },
+  chat: {
+    get: (id) => chats[id],
+    list: async () => Object.values(chats),
+    getActiveChat: () => null,
+    getMessages: async (id, o) => {
+      const all = store[id] || [];
+      const end = o.id ? all.findIndex((m) => m.id._serialized === o.id) : all.length;
+      return all.slice(Math.max(0, end - o.count), end);
+    },
+    getMessageById: async (id) => Object.values(store).flat().find((m) => m.id._serialized === id),
+    sendTextMessage: async (id, text) => {
+      const m = mk(id, `s${++sent}`, true, text, Date.now() / 1000 | 0, 1);
+      store[id].push(m);
+      setTimeout(() => (handlers["chat.new_message"] || []).forEach((f) => f(m)), 300); // WhatsApp também emite o evento do enviado
+      return ok(m.id._serialized);
+    },
+  },
+};
+Object.defineProperty(window, "WPP", { get: () => FAKE, set() {}, configurable: false });
+window.__fire = (ev, payload) => (handlers[ev] || []).forEach((f) => f(payload));
+window.__mk = mk; window.__store = store;
+</script></body></html>
