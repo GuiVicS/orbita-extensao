@@ -1414,6 +1414,7 @@
           <select id="crmStage" aria-label="Etapa do funil">${d.stages.map((s) => `<option value="${esc(s.id)}" ${s.id === d.stageId ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></div></div>
         <div class="sec"><h3>Tags</h3><div class="tags edit">${d.tags.map((t) => `<span>${esc(t)}<button data-crm="untag" data-tag="${esc(t)}" aria-label="Remover tag ${esc(t)}">${icon("x", 11)}</button></span>`).join("") || `<span class="muted">Sem tags</span>`}</div>
           <input class="in" id="crmTag" list="crmTags" placeholder="Adicionar tag e Enter" aria-label="Adicionar tag"><datalist id="crmTags">${d.knownTags.filter((t) => !d.tags.some((x) => x.toLowerCase() === t.toLowerCase())).map((t) => `<option value="${esc(t)}">`).join("")}</datalist></div>
+        <div class="sec"><h3>Ficha do lead</h3><div id="leadForm"></div></div>
         <div class="sec"><label class="swrow2"><span><b>IA responde este cliente</b><small>${d.autoReply ? "Ligada: se você responder, ela desliga sozinha." : "Desligada."}</small></span><input type="checkbox" id="crmAuto" ${d.autoReply ? "checked" : ""}></label></div>
         <div class="sec"><h3>Notas</h3><textarea class="in" id="crmNote" rows="2" placeholder="Nova nota sobre o cliente…"></textarea>
           <button class="btn" data-crm="note">${icon("check", 14)} Adicionar nota</button>
@@ -1428,6 +1429,7 @@
     box.innerHTML = `<div class="top">${avatar(c, stage)}${nameHtml}<small>${esc(C.formatPhone(c.phone) || "")}</small>
       ${c.pushname && c.pushname !== name ? `<small style="display:block">~${esc(c.pushname)}</small>` : ""}
       ${d?.lists?.length ? `<small style="display:block">Listas: ${esc(d.lists.join(", "))}</small>` : ""}</div>${body}`;
+    if ($("#leadForm")) globalThis.OrbitaLead?.mount($("#leadForm"), phone, { identity: false }); // nome e número já estão no topo
     if (side.editingName) $("#crmName")?.focus();
   }
 
@@ -1504,6 +1506,7 @@
   // alterações feitas no CRM do painel aparecem aqui na hora
   try {
     new BroadcastChannel("orbita-data").onmessage = (ev) => {
+      if (ev.data?.page && ev.data.page === globalThis.OrbitaLead?.pageId) return; // a ficha do lead já se atualizou
       if (["crm", "lists"].includes(ev.data?.topic) && S.current && S.sideOpen && !side.editingName && !document.activeElement?.closest?.("#side")) renderSide();
     };
   } catch {}

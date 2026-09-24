@@ -1,0 +1,14 @@
+[
+  {
+    "before": "(0,i().jsx)(fC,{phone:e.phone,tags:e.tags}),",
+    "after": "(0,i().jsx)(fC,{phone:e.phone,tags:e.tags}),(0,i().jsx)(\"div\",{\"data-testid\":\"lead-form\",ref:t=>{t&&globalThis.OrbitaLead?.mount(t,e.phone)}}),"
+  },
+  {
+    "before": "autoReply:Boolean(n?.autoReply),attention:n?.attention})",
+    "after": "autoReply:Boolean(n?.autoReply),attention:n?.attention,lead:n?.lead,deal:n?.deal})"
+  },
+  {
+    "before": "e.tags.length-3]})]}),(0,i().jsxs)(\"div\",{className:\"mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground\"",
+    "after": "e.tags.length-3]})]}),(0,i().jsx)(\"div\",{ref:t=>{t&&globalThis.OrbitaLead?.cardBadges(t,e)}}),(0,i().jsxs)(\"div\",{className:\"mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground\""
+  }
+]

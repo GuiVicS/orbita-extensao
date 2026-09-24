@@ -4,6 +4,15 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.10.0
+
+- **CRM: ficha do lead** no card do cliente (painel → CRM) e no painel lateral das Conversas, em quatro seções recolhíveis. Grava sozinho ao sair de cada campo:
+  - **Lead**: nome, WhatsApp, e-mail, empresa, origem, responsável, status (Novo, Em contato, Qualificado, Ganho, Perdido, Desqualificado), temperatura (Frio / Morno / Quente), produto/serviço de interesse, valor potencial e observações.
+  - **Oportunidade**: etapa (a do funil), valor, previsão de fechamento, probabilidade e valor ponderado; o **motivo de perda** aparece quando o status é “Perdido”.
+  - **Atividades**: tipo (Ligação, WhatsApp, E-mail, Reunião, Visita, Tarefa), data/hora, responsável, descrição, resultado e próxima ação (com data). Entram também no histórico do cliente, e a próxima ação mais recente fica em destaque.
+  - **Marketing**: UTM Source, UTM Medium, UTM Campaign e landing page.
+  - Origem, responsável, produto, resultado e UTMs sugerem os valores já usados. Os cards do Kanban mostram a temperatura e o valor. Os dados entram no backup.
+
 ## Novidades da 1.9.1
 
 - **Conversas: apagar mensagem.** Passe o mouse no balão e abra o menu: **Apagar para mim** (some das Conversas e do seu WhatsApp; o contato continua vendo) ou **Apagar para todos** (só nas suas mensagens e dentro do prazo do WhatsApp, cerca de 2 dias e meio). As duas pedem confirmação.
@@ -81,7 +90,7 @@ aba do WhatsApp (js/chat-page.js, WA-JS) ⇄ js/chat-content.js ⇄ porta "orbit
 ```sh
 node --test tests/*.test.mjs            # unitários (motor de tradução, transcrição, voz, utilidades)
 npm i -D playwright && npx playwright install chromium
-node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete
+node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form
 ```
 
 Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web simulado (`tests/e2e/fake-whatsapp.html`) e provedores de IA/voz simulados — nenhuma chave real é usada.
@@ -159,6 +168,7 @@ Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web
 | `2-consultas.json` | `js/wa-js.js` | Até 4 consultas `queryExists` por contato (op `resolve` sem cache + `sendText` de novo, ×2 variantes do 9º dígito) | Checa chat local antes de consultar o servidor; `resolve` usa o mesmo cache (10 min) do envio |
 | `3-4-service-worker.json` | `js/service_worker.js` | Número sem WhatsApp reduzia o intervalo para 2–4 s; sem pausa por lote; sem limite diário | Intervalo normal sempre; padrão pausa de 10 min a cada 25 envios; limite diário global de 250 contatos (`settings.dailyLimit`, contador em `chrome.storage.local["orbita:dailySent"]`), retomando no dia seguinte |
 | `4-ui-defaults.json` | `js/dashboard.js`, `js/popup.js` | Padrão da UI com `batchSize: 0` | Padrão `batchSize: 25`, `batchPauseMin: 10` |
+| `10-ficha-lead.json` | `js/dashboard.js` | CRM só com etapa, tags e notas | Ficha do lead (`js/lead-form.js`) no card do cliente; clientes do Kanban trazem `lead`/`deal` e o card mostra temperatura e valor |
 | `9-modulo-conversas.json` | `js/dashboard.js` | Conversas sem liga/desliga | Módulo `conversas` (padrão ligado) e item do menu ligado a ele |
 | `8-conversas-tela-cheia.json` | `js/dashboard.js` | iframe das Conversas sem permissão de tela cheia | `allow="microphone; fullscreen"` e `allowFullScreen` |
 | `7-conversas.json` | `js/dashboard.js` | Sem chat no painel | Item “Conversas” no menu e rota `#/conversas` (página `conversas.html` em iframe) |
@@ -183,6 +193,7 @@ node patches/patch.mjs js/dashboard.js patches/6-respostas-rapidas-backup.json
 node patches/patch.mjs js/dashboard.js patches/7-conversas.json
 node patches/patch.mjs js/dashboard.js patches/8-conversas-tela-cheia.json
 node patches/patch.mjs js/dashboard.js patches/9-modulo-conversas.json
+node patches/patch.mjs js/dashboard.js patches/10-ficha-lead.json
 ```
 
 `options.html`, `js/ia-options.js` e as entradas `options_ui` / `https://api.groq.com/*` do `manifest.json` não são patches: copie-os para o build novo.
