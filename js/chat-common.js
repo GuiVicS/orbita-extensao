@@ -37,6 +37,7 @@
     VOICE_PREVIEW: "audio.generatePreview", // gera a voz (Fish Audio) do texto aprovado
     SEND_AUDIO: "chat.sendAudio", // envia a voz gerada como mensagem de voz
     CRM_CHANGED: "crm.changed", // o CRM foi editado nas Conversas: refaz o vínculo da conversa
+    AVATAR: "chat.avatar", // busca/atualiza a foto de perfil da conversa
   };
 
   // Preferências das Conversas (chrome.storage.local). Sem chaves de API aqui:
@@ -94,6 +95,7 @@
     SEND_TEXT: "sendText",
     DOWNLOAD_MEDIA: "downloadMedia",
     SEND_VOICE: "sendVoice",
+    PROFILE_PIC: "profilePic",
   };
 
   // ------------------------------------------------------------ telefones

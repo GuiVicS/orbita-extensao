@@ -335,6 +335,7 @@
       };
       if (info.name) next.name = info.name;
       if (info.pushname) next.pushname = info.pushname;
+      if (info.avatarUrl && info.avatarUrl !== next.avatarUrl) Object.assign(next, { avatarUrl: info.avatarUrl, avatarAt: Date.now() });
       if (info.phone) next.phone = info.phone;
       // de qual conta do WhatsApp é esta conversa (dados ao vivo vêm sempre da conta conectada)
       if (account) next.account = account;
@@ -393,6 +394,30 @@
     } finally {
       resyncRunning = null;
     }
+  }
+
+  // ------------------------------------------------------ fotos de perfil
+  // Uma de cada vez (para não sobrecarregar o WhatsApp) e no máximo uma vez por
+  // dia por conversa, a menos que a imagem tenha falhado ao carregar (force).
+  const AVATAR_TTL = 24 * 3600 * 1000;
+  let avatarChain = Promise.resolve();
+  const avatarBusy = new Map();
+  function fetchAvatar(chatId, force) {
+    if (avatarBusy.has(chatId)) return avatarBusy.get(chatId);
+    const job = (avatarChain = avatarChain.then(async () => {
+      const chat = await C.getChat(chatId);
+      if (!chat) return null;
+      if (!force && chat.avatarAt && Date.now() - chat.avatarAt < AVATAR_TTL) return chat;
+      if (!status.ready) return chat;
+      const r = await exec({ op: C.TAB_CMDS.PROFILE_PIC, chatId }, 20000).catch(() => null);
+      if (!r) return chat;
+      const next = await C.updateChat(chatId, (c) => (c ? { ...c, avatarUrl: r.url || null, avatarAt: Date.now() } : null));
+      if (next && next.avatarUrl !== chat.avatarUrl) broadcast(C.EVENTS.CHAT_UPDATED, { chat: next });
+      return next;
+    }));
+    avatarBusy.set(chatId, job);
+    job.finally(() => avatarBusy.delete(chatId));
+    return job;
   }
 
   // ------------------------------------------------------ pedidos do painel
@@ -497,6 +522,9 @@
         const media = await ensureMedia(String(req.messageId));
         return { key: media.key, mime: media.mime, size: media.size };
       }
+
+      case C.OPS.AVATAR:
+        return fetchAvatar(String(req.chatId), Boolean(req.force));
 
       case C.OPS.CRM_CHANGED: {
         clientIndex = null; // relê contatos/etapas/tags do CRM

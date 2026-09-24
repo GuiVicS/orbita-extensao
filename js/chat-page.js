@@ -102,7 +102,18 @@
       unreadCount: Math.max(0, Number(get(c, "unreadCount") || 0)),
       lastMessageAt: 1000 * Number(get(c, "t") || 0) || last?.ts || 0,
       last,
+      avatarUrl: cachedAvatar(chatId), // só se o WhatsApp já tiver a foto em memória (sem ir à rede)
     };
+  }
+
+  // Foto de perfil já carregada pelo WhatsApp Web (não faz pedido ao servidor).
+  function cachedAvatar(chatId) {
+    try {
+      const t = WPP()?.whatsapp?.ProfilePicThumbStore?.get?.(chatId);
+      return String(get(t, "imgFull") || get(t, "img") || "") || undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   async function chatFor(chatId) {
@@ -145,6 +156,12 @@
         const code = result?.messageSendResult ?? (typeof result === "string" ? result : undefined);
         if (code !== undefined && code !== "OK" && code !== WPP()?.whatsapp?.enums?.SendMsgResult?.OK) throw new Error(`O WhatsApp recusou a mensagem (${String(code)}).`);
         return msg || { id: ser(res?.id), chatId: cmd.chatId, fromMe: true, ts: Date.now(), type: "text", rawType: "chat", text: cmd.text, ack: 0, revoked: false };
+      }
+      case "profilePic": {
+        // pode ir ao servidor do WhatsApp; devolve null quando a pessoa não tem foto
+        // (ou a esconde pela privacidade)
+        const url = await WPP().contact.getProfilePictureUrl(cmd.chatId, true).catch(() => null);
+        return { url: url || cachedAvatar(cmd.chatId) || null };
       }
       case "sendVoice": {
         // mesmo caminho das respostas rápidas: data URL + isPtt = mensagem de voz com forma de onda

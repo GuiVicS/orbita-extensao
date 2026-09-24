@@ -246,3 +246,8 @@ body.expanded .msgs { padding-left: 10%; padding-right: 10%; }
 .side details.hist summary { cursor: pointer; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-foreground); font-weight: 700; margin-bottom: 6px; }
 .namerow { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
 .ibtn.inline { display: inline-grid; width: 24px; height: 24px; vertical-align: middle; }
+
+/* ---------- foto de perfil ---------- */
+.av { overflow: visible; }
+.av .avimg { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; background: var(--card); }
+.av .stage { z-index: 1; }

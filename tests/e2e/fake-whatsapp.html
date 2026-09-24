@@ -55,6 +55,11 @@ const FAKE = {
     },
   },
 };
+// fotos de perfil: John tem (vem do servidor), Anna não tem, Carla tem um link em memória que já expirou
+const PIC = (color) => "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect width='64' height='64' fill='${color}'/><circle cx='32' cy='25' r='12' fill='white'/><rect x='14' y='42' width='36' height='22' rx='11' fill='white'/></svg>`);
+window.__picCalls = [];
+FAKE.contact = { getProfilePictureUrl: async (id) => (window.__picCalls.push(id), id === "5511999998888@c.us" ? PIC("#0a7d5c") : id === "5511912345678@c.us" ? PIC("#b45309") : null) };
+FAKE.whatsapp = { ProfilePicThumbStore: { get: (id) => (id === "5511912345678@c.us" ? { img: "https://expirado.invalid/foto.jpg" } : undefined) } };
 Object.defineProperty(window, "WPP", { get: () => FAKE, set() {}, configurable: false });
 window.__fire = (ev, payload) => (handlers[ev] || []).forEach((f) => f(payload));
 window.__mk = mk; window.__store = store;

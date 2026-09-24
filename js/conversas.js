@@ -111,7 +111,12 @@
   }
   const displayName = (c) => c?.client?.name || c?.name || c?.pushname || C.formatPhone(c?.phone) || "Contato";
   const initials = (name) => name.replace(/[^\p{L}\p{N} ]/gu, "").trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() || "").join("") || "#";
-  const avatar = (c, stage) => `<span class="av" style="background:${avatarColor(c.chatId)}">${esc(initials(displayName(c)))}${stage ? `<i class="stage" style="background:${esc(stage.color)}" title="${esc(stage.name)}"></i>` : ""}</span>`;
+  // Foto de perfil do WhatsApp quando existir; senão, as iniciais coloridas.
+  // Os links de foto do WhatsApp expiram: se a imagem falhar, pede um novo.
+  const avatar = (c, stage) =>
+    `<span class="av" style="background:${avatarColor(c.chatId)}">${esc(initials(displayName(c)))}${
+      c.avatarUrl ? `<img class="avimg" src="${esc(c.avatarUrl)}" alt="" referrerpolicy="no-referrer" loading="lazy" data-chat="${esc(c.chatId)}">` : ""
+    }${stage ? `<i class="stage" style="background:${esc(stage.color)}" title="${esc(stage.name)}"></i>` : ""}</span>`;
   function tick(m) {
     if (!m.fromMe) return "";
     if (m._pending) return `<span class="tick">${icon("clock", 12)}</span>`;
@@ -227,9 +232,37 @@
       ${c.unreadCount ? `<span class="badge" aria-label="${c.unreadCount} não lidas">${c.unreadCount > 99 ? "99+" : c.unreadCount}</span>` : ""}</span></span></button>`;
   }
 
+  // pede as fotos que faltam (ou venceram) das conversas da lista, sem pressa
+  const avatarAsked = new Set();
+  function requestAvatars(list) {
+    if (!S.status.ready) return;
+    for (const c of list.slice(0, 60)) {
+      if (avatarAsked.has(c.chatId)) continue;
+      if (c.avatarAt && Date.now() - c.avatarAt < 864e5) continue;
+      avatarAsked.add(c.chatId);
+      call(C.OPS.AVATAR, { chatId: c.chatId }).catch(() => {});
+    }
+  }
+  const avatarRetried = new Set();
+  document.addEventListener(
+    "error",
+    (e) => {
+      const img = e.target;
+      if (!(img instanceof HTMLImageElement) || !img.classList.contains("avimg")) return;
+      img.remove(); // mostra as iniciais
+      const chatId = img.dataset.chat;
+      if (chatId && !avatarRetried.has(chatId) && S.status.ready) {
+        avatarRetried.add(chatId);
+        call(C.OPS.AVATAR, { chatId, force: true }).catch(() => {});
+      }
+    },
+    true,
+  );
+
   function renderList() {
     const items = $("#items");
     const list = filteredChats();
+    requestAvatars(list);
     items.innerHTML = list.length
       ? list.map(itemHtml).join("")
       : `<div class="empty">${S.chats.length ? "Nenhuma conversa com esse filtro." : S.status.ready ? "Nenhuma conversa ainda." : "As conversas aparecem aqui quando o WhatsApp Web estiver aberto numa aba."}</div>`;
