@@ -203,12 +203,11 @@ body.embed .app { height: calc(100vh - 32px); margin: 16px 0; border-radius: var
 .rec small { width: 100%; color: var(--muted-foreground); font-size: 12px; }
 .aibadge { display: inline-flex; align-items: center; gap: 4px; margin-top: 5px; font-size: 10.5px; font-weight: 700; color: var(--wa-meta); border: 1px solid color-mix(in srgb, var(--wa-meta) 40%, transparent); border-radius: 999px; padding: 0 7px; }
 
-/* ---------- tela cheia (só o chat) ---------- */
-:fullscreen body, :fullscreen body.embed { background: var(--background); }
-:fullscreen body.embed .app { height: 100vh; margin: 0; border-radius: 0; box-shadow: none; border: 0; }
-:fullscreen .app { grid-template-columns: 380px minmax(0, 1fr) auto; }
-:fullscreen .msgs { padding-left: 12%; padding-right: 12%; }
-:fullscreen:root, html:fullscreen { background: var(--background); }
+/* ---------- tela cheia na página (só o chat, ocupando a aba do painel) ---------- */
+body.embed.expanded { background: var(--background); }
+body.embed.expanded .app { height: 100vh; margin: 0; border-radius: 0; box-shadow: none; border: 0; }
+body.expanded .app { grid-template-columns: 380px minmax(0, 1fr) auto; }
+body.expanded .msgs { padding-left: 10%; padding-right: 10%; }
 
 /* cabeçalho da lista: título e botões na 1ª linha, status do WhatsApp na 2ª */
 .list { min-width: 0; overflow: hidden; }

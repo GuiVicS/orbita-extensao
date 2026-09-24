@@ -255,25 +255,43 @@
     document.querySelectorAll(".filters button").forEach((x) => x.classList.toggle("on", x === b));
     renderList();
   });
-  // ---- tela cheia: só o chat ocupa o monitor (API de tela cheia do navegador)
-  const isFull = () => Boolean(document.fullscreenElement);
-  function paintFull() {
-    const b = $("#fullBtn");
-    b.innerHTML = icon(isFull() ? "minimize" : "maximize", 17);
-    b.setAttribute("aria-label", isFull() ? "Sair da tela cheia" : "Tela cheia");
-    b.title = isFull() ? "Sair da tela cheia (Esc)" : "Tela cheia (Esc para sair)";
-    b.classList.toggle("on", isFull());
-  }
-  $("#fullBtn").addEventListener("click", async () => {
-    try {
-      if (isFull()) await document.exitFullscreen();
-      else await document.documentElement.requestFullscreen({ navigationUI: "hide" });
-    } catch {
-      // sem permissão de tela cheia (ex.: painel antigo): abre o chat numa janela só dele
-      chrome.windows.create({ url: chrome.runtime.getURL(`conversas.html${S.current ? `?chat=${encodeURIComponent(S.current.chatId)}` : ""}`), type: "popup", state: "maximized" });
+  // ---- tela cheia na página: o chat cobre toda a aba do painel (some o menu
+  // e o cabeçalho), sem entrar no modo tela cheia do navegador/monitor.
+  // A página das Conversas está num iframe do painel (mesma origem), então
+  // expandimos o próprio iframe. Esc ou o botão voltam ao normal.
+  const frame = EMBED ? window.frameElement : null;
+  const EXP_KEY = "orbita-chat-expanded";
+  let expanded = false;
+  function setExpanded(on, { remember = true } = {}) {
+    if (!frame) return;
+    expanded = on;
+    if (on) {
+      frame.dataset.orbitaStyle = frame.getAttribute("style") || "";
+      frame.style.cssText = "position:fixed;inset:0;width:100vw;height:100vh;margin:0;border:0;z-index:2147483000;display:block;";
+      parent.document.documentElement.style.overflow = "hidden"; // o painel atrás não rola
+    } else {
+      frame.setAttribute("style", frame.dataset.orbitaStyle || "");
+      parent.document.documentElement.style.overflow = "";
     }
-  });
-  document.addEventListener("fullscreenchange", paintFull);
+    document.body.classList.toggle("expanded", on);
+    if (remember) {
+      try {
+        localStorage.setItem(EXP_KEY, on ? "1" : "0");
+      } catch {}
+    }
+    const b = $("#fullBtn");
+    b.innerHTML = icon(on ? "minimize" : "maximize", 17);
+    b.setAttribute("aria-label", on ? "Sair da tela cheia" : "Tela cheia");
+    b.setAttribute("aria-pressed", String(on));
+    b.title = on ? "Sair da tela cheia (Esc)" : "Tela cheia: só o chat na página (Esc para sair)";
+    b.classList.toggle("on", on);
+  }
+  if (!frame) $("#fullBtn").hidden = true; // aberto sozinho numa aba, o chat já ocupa a página
+  $("#fullBtn").addEventListener("click", () => setExpanded(!expanded));
+  // se o painel trocar de página (outro item do menu), o iframe some; nada a desfazer.
+  try {
+    if (frame && localStorage.getItem(EXP_KEY) === "1") setExpanded(true, { remember: false });
+  } catch {}
   $("#prefs").addEventListener("click", () => chrome.tabs.create({ url: chrome.runtime.getURL("options.html#conversas") }));
   $("#refresh").addEventListener("click", async (e) => {
     const b = e.currentTarget;
@@ -1042,11 +1060,12 @@
 
   // Esc fecha o popover de tradução ou a prévia (registrado uma vez só)
   document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape" || !S.current) return;
-    if (S.trOpen) {
+    if (e.key !== "Escape") return;
+    if (S.current && S.trOpen) {
       S.trOpen = false;
       renderHeader();
-    } else if (S.preview) closePreview(false);
+    } else if (S.current && S.preview) closePreview(false);
+    else if (expanded) setExpanded(false);
   });
 
   // ----------------------------------------------------------------- início
