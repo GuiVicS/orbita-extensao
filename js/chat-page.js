@@ -27,6 +27,8 @@
 
   // tipos internos do WhatsApp que não são mensagens de conversa
   const SKIP = new Set(["e2e_notification", "notification_template", "notification", "gp2", "protocol", "ciphertext", "call_log", "broadcast_notification", "pinned_message", "keep_in_chat"]);
+  // mídias que dá para ver/baixar nas Conversas
+  const MEDIA_KINDS = { image: "image", video: "video", ptv: "video", sticker: "sticker", document: "document" };
   const LABELS = { image: "Foto", video: "Vídeo", document: "Documento", sticker: "Figurinha", location: "Localização", vcard: "Contato", multi_vcard: "Contatos", poll_creation: "Enquete", ptv: "Vídeo redondo" };
 
   function ready() {
@@ -73,6 +75,14 @@
     if (isAudio) msg.audio = { duration: Number(get(m, "duration") || 0), ptt: rawType === "ptt" };
     if (type === "other") msg.label = LABELS[rawType] || "Mídia";
     if (rawType === "document") msg.filename = String(get(m, "filename") || "");
+    const kind = MEDIA_KINDS[rawType];
+    if (kind) {
+      // nas fotos/vídeos o WhatsApp guarda uma miniatura JPEG (base64) em "body"
+      const body = get(m, "body");
+      const thumb = typeof body === "string" && body.length > 100 && body.length < 120000 && /^[A-Za-z0-9+/]+=*$/.test(body.slice(0, 200)) ? body : undefined;
+      const num = (k) => Number(get(m, k) || 0) || undefined;
+      msg.media = { kind, mime: String(get(m, "mimetype") || ""), size: num("size"), width: num("width"), height: num("height"), duration: num("duration"), pages: num("pageCount"), gif: Boolean(get(m, "isGif")), round: rawType === "ptv", thumb };
+    }
     return msg;
   }
 
@@ -185,17 +195,27 @@
         return msg || { id: ser(res?.id), chatId: cmd.chatId, fromMe: true, ts: Date.now(), type: "audio", rawType: "ptt", text: "", ack: 0, revoked: false, audio: { ptt: true, duration: cmd.duration || 0 } };
       }
       case "downloadMedia": {
-        // a mídia volta em base64: a porta do Chrome só transporta JSON
+        // A porta do Chrome só transporta JSON e tem limite de tamanho: o arquivo
+        // fica guardado aqui e vai em pedaços (mediaChunk), em base64.
         const blob = await WPP().chat.downloadMedia(cmd.id);
         if (!blob?.size) throw new Error("O WhatsApp não entregou o arquivo desta mensagem.");
-        if (cmd.maxBytes && blob.size > cmd.maxBytes) throw new Error("Arquivo grande demais.");
+        if (cmd.maxBytes && blob.size > cmd.maxBytes) throw new Error(`Arquivo grande demais (${Math.round(blob.size / 1048576)} MB). Abra pelo WhatsApp.`);
+        pendingMedia.set(cmd.id, blob);
+        setTimeout(() => pendingMedia.delete(cmd.id), 5 * 60000);
+        return { mime: blob.type || "application/octet-stream", size: blob.size, chunks: Math.ceil(blob.size / CHUNK) };
+      }
+      case "mediaChunk": {
+        const blob = pendingMedia.get(cmd.id);
+        if (!blob) throw new Error("O download expirou. Tente de novo.");
+        const part = blob.slice(cmd.index * CHUNK, (cmd.index + 1) * CHUNK);
         const dataUrl = await new Promise((res, rej) => {
           const r = new FileReader();
           r.onload = () => res(String(r.result));
           r.onerror = () => rej(r.error);
-          r.readAsDataURL(blob);
+          r.readAsDataURL(part);
         });
-        return { mime: blob.type || "audio/ogg", size: blob.size, data: dataUrl.slice(dataUrl.indexOf(",") + 1) };
+        if ((cmd.index + 1) * CHUNK >= blob.size) pendingMedia.delete(cmd.id);
+        return { data: dataUrl.slice(dataUrl.indexOf(",") + 1) };
       }
       default:
         throw new Error(`Comando desconhecido: ${cmd.op}`);

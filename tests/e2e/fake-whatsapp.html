@@ -16,6 +16,26 @@ const wav = (() => { const sr = 8000, n = sr, b = new DataView(new ArrayBuffer(4
 const voice = (chat, n, t, duration) => ({ ...mk(chat, n, false, "", t), type: "ptt", body: undefined, duration });
 store["5511999998888@c.us"].push(voice("5511999998888@c.us", "v1", now - 3300, 3), voice("5511999998888@c.us", "v2", now - 3200, 400));
 window.__downloads = 0;
+// mídias: foto (miniatura + imagem grande), vídeo, PDF, .docx e um arquivo de 9 MB (download em pedaços)
+const canvasPng = (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; const g = c.getContext("2d"); const gr = g.createLinearGradient(0, 0, w, h); gr.addColorStop(0, "#0ea5e9"); gr.addColorStop(1, "#7c3aed"); g.fillStyle = gr; g.fillRect(0, 0, w, h); g.fillStyle = "#fff"; g.font = `${Math.round(h / 6)}px sans-serif`; g.fillText("Órbita", w / 10, h / 2); return c.toDataURL("image/png"); };
+const b64Blob = (dataUrl, type) => { const bin = atob(dataUrl.split(",")[1]); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Blob([u], { type }); };
+const PDF = "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 200]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n4 0 obj<</Length 44>>stream\nBT /F1 24 Tf 50 100 Td (Orbita PDF) Tj ET\nendstream endobj\n5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF";
+const J = "5511999998888@c.us";
+const media = (n, type, extra, t) => ({ ...mk(J, n, false, "", t), type, body: undefined, ...extra });
+window.__media = {
+  [`false_${J}_img1`]: b64Blob(canvasPng(1200, 800), "image/png"),
+  [`false_${J}_vid1`]: new Blob([new Uint8Array(4000)], { type: "video/mp4" }),
+  [`false_${J}_pdf1`]: new Blob([PDF], { type: "application/pdf" }),
+  [`false_${J}_doc1`]: new Blob([new Uint8Array(2000)], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
+  [`false_${J}_big1`]: new Blob([new Uint8Array(9 * 1024 * 1024).fill(7)], { type: "application/zip" }),
+};
+store[J].push(
+  media("img1", "image", { body: canvasPng(160, 107).split(",")[1], caption: "Foto do carro", mimetype: "image/jpeg", size: 245000, width: 1200, height: 800 }, now - 3100),
+  media("vid1", "video", { body: canvasPng(160, 90).split(",")[1], mimetype: "video/mp4", size: 4000, width: 1280, height: 720, duration: 14 }, now - 3050),
+  media("pdf1", "document", { filename: "Proposta TopBrasil.pdf", mimetype: "application/pdf", size: 1200, pageCount: 1 }, now - 3000),
+  media("doc1", "document", { filename: "Contrato.docx", mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", size: 2000 }, now - 2950),
+  media("big1", "document", { filename: "Fotos.zip", mimetype: "application/zip", size: 9 * 1024 * 1024 }, now - 2900),
+);
 if (window.__extra) store["5511999998888@c.us"].push(mk("5511999998888@c.us", 4, false, "Missed while offline", now + 5));
 const chats = {
   "5511999998888@c.us": { id: { _serialized: "5511999998888@c.us" }, contact: { name: "John Smith", pushname: "John" }, unreadCount: 2 },
@@ -48,7 +68,7 @@ const FAKE = {
       setTimeout(() => (handlers["chat.new_message"] || []).forEach((f) => f(m)), 300);
       return ok(m.id._serialized);
     },
-    downloadMedia: async (id) => (window.__downloads++, wav),
+    downloadMedia: async (id) => (window.__downloads++, (window.__dlIds ||= []).push(id), window.__media[id] || wav),
     getMessageById: async (id) => Object.values(store).flat().find((m) => m.id._serialized === id),
     sendTextMessage: async (id, text) => {
       const m = mk(id, `s${++sent}`, true, text, Date.now() / 1000 | 0, 1);

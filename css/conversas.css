@@ -251,3 +251,42 @@ body.expanded .msgs { padding-left: 10%; padding-right: 10%; }
 .av { overflow: visible; }
 .av .avimg { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; background: var(--card); }
 .av .stage { z-index: 1; }
+
+/* ---------- mídias no balão ---------- */
+.mthumb { position: relative; display: block; border: 0; padding: 0; margin: -2px -5px 2px; border-radius: 8px; overflow: hidden; cursor: zoom-in; background: color-mix(in srgb, var(--wa-fg) 8%, transparent); max-width: 100%; }
+.mthumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mthumb.sticker { background: none; width: 140px; height: 140px; margin: 0; }
+.mthumb.sticker img { object-fit: contain; }
+.mthumb.round { width: 200px; height: 200px; border-radius: 50%; margin: 0; }
+.mthumb .noth { display: grid; place-items: center; width: 100%; height: 100%; min-height: 120px; color: var(--wa-meta); }
+.mthumb .playov { position: absolute; inset: 0; margin: auto; width: 52px; height: 52px; border-radius: 50%; background: rgba(0,0,0,.45); color: #fff; display: grid; place-items: center; }
+.mthumb .mlabel { position: absolute; left: 8px; bottom: 6px; font-size: 11px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.doccard { display: flex; gap: 10px; align-items: center; padding: 8px; border-radius: 8px; background: color-mix(in srgb, var(--wa-fg) 6%, transparent); min-width: 230px; }
+.dico { width: 36px; height: 44px; border-radius: 6px; background: #64748b; color: #fff; display: grid; place-items: center; font-size: 10px; font-weight: 800; flex: none; }
+.dico.pdf { background: #e5484d; }
+.dico.big { width: 64px; height: 80px; font-size: 16px; }
+.dinfo { min-width: 0; }
+.dinfo b { display: block; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+.dinfo small { font-size: 11.5px; color: var(--wa-meta); }
+.dact { display: flex; gap: 14px; justify-content: flex-end; margin-top: 4px; font-size: 13px; }
+
+/* ---------- visualizador ---------- */
+.viewer { position: fixed; inset: 0; z-index: 95; background: rgba(8,12,18,.92); display: grid; grid-template-rows: auto 1fr auto; color: #e9edef; animation: rise .15s ease-out; }
+.viewer .vbar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; }
+.viewer .vtitle { flex: 1; min-width: 0; }
+.viewer .vtitle b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viewer .vtitle small { color: #aebac1; }
+.viewer .ibtn { color: #e9edef; }
+.viewer .ibtn:hover { background: rgba(255,255,255,.1); color: #fff; }
+.viewer .vstage { min-height: 0; display: grid; place-items: center; padding: 0 70px 12px; }
+.viewer .vstage img, .viewer .vstage video { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; }
+.viewer .vstage iframe { width: min(1000px, 100%); height: 100%; border: 0; border-radius: 8px; background: #fff; }
+.viewer .vload, .viewer .vfile { display: grid; justify-items: center; gap: 10px; color: #aebac1; text-align: center; }
+.viewer .vfile b { color: #fff; }
+.viewer .vnav { position: absolute; top: 50%; transform: translateY(-50%); width: 48px; height: 48px; border-radius: 50%; border: 0; background: rgba(255,255,255,.1); color: #fff; display: grid; place-items: center; cursor: pointer; }
+.viewer .vnav:hover { background: rgba(255,255,255,.2); }
+.viewer .vnav:disabled { opacity: .25; cursor: default; }
+.viewer .vnav.prev { left: 12px; }
+.viewer .vnav.next { right: 12px; }
+.viewer .vcount { position: absolute; bottom: 14px; right: 18px; font-size: 12px; color: #aebac1; }
+.viewer .vcap { text-align: center; padding: 0 20px 16px; white-space: pre-wrap; }

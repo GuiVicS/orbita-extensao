@@ -96,6 +96,7 @@
     DOWNLOAD_MEDIA: "downloadMedia",
     SEND_VOICE: "sendVoice",
     PROFILE_PIC: "profilePic",
+    MEDIA_CHUNK: "mediaChunk",
   };
 
   // ------------------------------------------------------------ telefones
@@ -150,7 +151,7 @@
     }
     // na lista, você lê no seu idioma: a tradução das recebidas e o que você escreveu nas enviadas
     const text = (msg.fromMe ? msg.textPt : msg.translationStatus === "done" && msg.translatedText) || msg.text;
-    if (msg.type === "other") return text ? `📎 ${text}` : `📎 ${msg.label || "Mídia"}`;
+    if (msg.type === "other") return text ? `📎 ${text}` : `📎 ${msg.filename || msg.label || "Mídia"}`;
     return text || "";
   }
 

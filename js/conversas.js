@@ -61,6 +61,9 @@
     pause: '<rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/>',
     languages: '<path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/>',
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+    left: '<path d="m15 18-6-6 6-6"/>',
+    right: '<path d="m9 18 6-6-6-6"/>',
     pencil: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>',
     shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
   };
@@ -445,6 +448,132 @@
     paintPlayer();
   }
 
+  // ---- mídias: miniatura no balão; clique abre o visualizador
+  const fmtSize = (n) => (!n ? "" : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1048576).toFixed(1).replace(".", ",")} MB`);
+  const extOf = (m) => ((m.filename || "").match(/\.([a-z0-9]{1,5})$/i)?.[1] || (m.media.mime.split("/")[1] || "").split(/[;+.-]/)[0] || "arq").toUpperCase().slice(0, 4);
+  const isPdf = (m) => /pdf/i.test(m.media?.mime || "") || /\.pdf$/i.test(m.filename || "");
+
+  // o balão preserva quebras de linha (texto das mensagens): o HTML da mídia vai sem elas
+  const tight = (html) => html.replace(/>\s+</g, "><").trim();
+
+  function mediaBlock(m) {
+    return tight(mediaHtml(m));
+  }
+
+  function mediaHtml(m) {
+    const md = m.media;
+    const cap = m.text ? `<span class="cap">${textBlock(m)}</span>` : "";
+    if (md.kind === "document") {
+      const info = [isPdf(m) ? "PDF" : extOf(m), md.pages ? `${md.pages} página${md.pages > 1 ? "s" : ""}` : "", fmtSize(md.size)].filter(Boolean).join(" · ");
+      return `<div class="doccard"><span class="dico ${isPdf(m) ? "pdf" : ""}">${esc(isPdf(m) ? "PDF" : extOf(m))}</span>
+        <span class="dinfo"><b title="${esc(m.filename || "")}">${esc(m.filename || "Documento")}</b><small>${esc(info)}</small></span></div>
+        <div class="dact"><button class="link" data-view="${esc(m.id)}">${isPdf(m) ? "Abrir" : "Ver"}</button><button class="link" data-dl="${esc(m.id)}">Baixar</button></div>${cap}`;
+    }
+    const w = md.width && md.height ? Math.min(260, md.width) : 240;
+    const ratio = md.width && md.height ? Math.min(1.6, Math.max(0.5, md.height / md.width)) : 0.75;
+    const thumb = md.thumb ? `<img src="data:image/jpeg;base64,${md.thumb}" alt="">` : `<span class="noth">${icon(md.kind === "video" ? "play" : "clip", 26)}</span>`;
+    const label = md.kind === "video" ? (md.gif ? "GIF" : fmtDur(md.duration || 0)) : "";
+    const cls = `mthumb ${md.kind} ${md.round ? "round" : ""}`;
+    const style = md.kind === "sticker" || md.round ? "" : `style="width:${w}px;height:${Math.round(w * ratio)}px"`;
+    return `<button class="${cls}" data-view="${esc(m.id)}" aria-label="Abrir ${md.kind === "video" ? "vídeo" : md.kind === "sticker" ? "figurinha" : "foto"}" ${style}>${thumb}
+      ${md.kind === "video" ? `<span class="playov">${icon("play", 22)}</span>` : ""}${label ? `<span class="mlabel">${esc(label)}</span>` : ""}</button>${cap}`;
+  }
+
+  // ---- visualizador (foto, vídeo, PDF; outros arquivos: baixar)
+  const mediaUrls = new Map(); // id → blob URL (vale enquanto a página estiver aberta)
+  const viewer = { open: false, list: [], i: 0 };
+
+  async function mediaUrl(id) {
+    if (mediaUrls.has(id)) return mediaUrls.get(id);
+    await call(C.OPS.MEDIA_FETCH, { messageId: id }); // baixa da aba do WhatsApp se ainda não está no cache
+    const rec = await C.getMedia(id);
+    if (!rec?.blob) throw new Error("Arquivo não encontrado.");
+    const url = URL.createObjectURL(rec.blob);
+    mediaUrls.set(id, url);
+    return url;
+  }
+
+  function fileName(m) {
+    if (m.filename) return m.filename;
+    const ext = (m.media?.mime.split("/")[1] || "bin").split(/[;+]/)[0].replace("jpeg", "jpg");
+    return `whatsapp-${new Date(m.ts).toISOString().slice(0, 19).replace(/[T:]/g, "-")}.${ext}`;
+  }
+
+  async function download(id) {
+    const m = S.messages.find((x) => x.id === id);
+    if (!m) return;
+    try {
+      const a = Object.assign(document.createElement("a"), { href: await mediaUrl(id), download: fileName(m) });
+      document.body.append(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      toast(`Não foi possível baixar: ${e.message}`, "err");
+    }
+  }
+
+  function openViewer(id) {
+    viewer.list = S.messages.filter((x) => x.media && !x.revoked);
+    viewer.i = Math.max(0, viewer.list.findIndex((x) => x.id === id));
+    viewer.open = true;
+    renderViewer();
+  }
+
+  function closeViewer() {
+    viewer.open = false;
+    document.querySelector(".viewer")?.remove();
+  }
+
+  async function renderViewer() {
+    let box = document.querySelector(".viewer");
+    if (!viewer.open) return box?.remove();
+    const m = viewer.list[viewer.i];
+    if (!box) {
+      box = document.createElement("div");
+      box.className = "viewer";
+      box.setAttribute("role", "dialog");
+      box.setAttribute("aria-modal", "true");
+      document.body.append(box);
+      box.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-v]");
+        if (!b) return e.target === box || e.target.classList.contains("vstage") ? closeViewer() : undefined;
+        if (b.dataset.v === "close") closeViewer();
+        if (b.dataset.v === "prev") nav(-1);
+        if (b.dataset.v === "next") nav(1);
+        if (b.dataset.v === "dl") download(viewer.list[viewer.i].id);
+        if (b.dataset.v === "tab") mediaUrl(viewer.list[viewer.i].id).then((u) => chrome.tabs.create({ url: u }));
+      });
+    }
+    const n = viewer.list.length;
+    const title = m.filename || (m.media.kind === "video" ? "Vídeo" : m.media.kind === "sticker" ? "Figurinha" : "Foto");
+    box.innerHTML = `<div class="vbar"><div class="vtitle"><b>${esc(title)}</b><small>${esc(m.fromMe ? "Você" : displayName(S.current))} · ${esc(new Date(m.ts).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }))}${m.media.size ? ` · ${fmtSize(m.media.size)}` : ""}</small></div>
+      ${isPdf(m) ? `<button class="ibtn" data-v="tab" aria-label="Abrir em nova aba" title="Abrir em nova aba">${icon("external", 18)}</button>` : ""}
+      <button class="ibtn" data-v="dl" aria-label="Baixar" title="Baixar">${icon("download", 18)}</button>
+      <button class="ibtn" data-v="close" aria-label="Fechar (Esc)" title="Fechar (Esc)">${icon("x", 20)}</button></div>
+      <div class="vstage"><div class="vload">${icon("spinner", 26, 'class="spin"')}<span>Baixando do WhatsApp…</span></div></div>
+      ${n > 1 ? `<button class="vnav prev" data-v="prev" aria-label="Anterior" ${viewer.i === 0 ? "disabled" : ""}>${icon("left", 26)}</button><button class="vnav next" data-v="next" aria-label="Próxima" ${viewer.i === n - 1 ? "disabled" : ""}>${icon("right", 26)}</button><span class="vcount">${viewer.i + 1} / ${n}</span>` : ""}
+      ${m.text ? `<div class="vcap">${esc(m.translationStatus === "done" && m.translatedText ? m.translatedText : m.text)}</div>` : ""}`;
+    box.querySelector("[data-v=close]").focus();
+    const stage = box.querySelector(".vstage");
+    try {
+      const url = await mediaUrl(m.id);
+      if (!viewer.open || viewer.list[viewer.i] !== m) return;
+      if (m.media.kind === "video") stage.innerHTML = `<video src="${url}" controls autoplay ${m.media.gif ? "loop muted" : ""} playsinline></video>`;
+      else if (m.media.kind === "document" && isPdf(m)) stage.innerHTML = `<iframe src="${url}" title="${esc(title)}"></iframe>`;
+      else if (m.media.kind === "document") stage.innerHTML = `<div class="vfile"><span class="dico big">${esc(extOf(m))}</span><b>${esc(title)}</b><small>Sem pré-visualização para este tipo de arquivo.</small><button class="btn primary" data-v="dl">${icon("download", 15)} Baixar</button></div>`;
+      else stage.innerHTML = `<img src="${url}" alt="${esc(m.text || title)}">`;
+    } catch (e) {
+      if (viewer.list[viewer.i] === m) stage.innerHTML = `<div class="vfile"><b>Não foi possível abrir</b><small>${esc(e.message)}</small></div>`;
+    }
+  }
+
+  function nav(d) {
+    const j = viewer.i + d;
+    if (j < 0 || j >= viewer.list.length) return;
+    viewer.i = j;
+    renderViewer();
+  }
+
   function bubbleHtml(m, prev) {
     let head = "";
     if (!prev || dayKey(prev.ts) !== dayKey(m.ts)) head += `<div class="day">${esc(dayLabel(m.ts))}</div>`;
@@ -453,6 +582,7 @@
     let body;
     if (m.revoked) body = `${icon("ban", 14, 'style="display:inline;vertical-align:-2px"')} Mensagem apagada${m.text ? `<span class="cap" style="opacity:.7">“${esc(m.text)}”</span>` : ""}`;
     else if (m.type === "audio") body = audioBlock(m);
+    else if (m.type === "other" && m.media) body = mediaBlock(m);
     else if (m.type === "other") body = `<span class="kind">${icon("clip", 14)} ${esc(m.label || "Mídia")}${m.filename ? `: ${esc(m.filename)}` : ""}</span>${m.text ? `<span class="cap">${textBlock(m)}</span>` : ""}`;
     else body = textBlock(m);
     const cls = ["b", m.fromMe ? "me" : "", first ? "first" : "", m.revoked ? "revoked" : "", m._pending ? "pending" : "", m._new ? "new" : ""].filter(Boolean).join(" ");
@@ -644,6 +774,10 @@
         S.showOriginal.has(id) ? S.showOriginal.delete(id) : S.showOriginal.add(id);
         return renderMessages({ keepScroll: true });
       }
+      const view = e.target.closest("[data-view]");
+      if (view) return openViewer(view.dataset.view);
+      const dl = e.target.closest("[data-dl]");
+      if (dl) return download(dl.dataset.dl);
       const play = e.target.closest("[data-play]");
       if (play) return togglePlay(play.dataset.play);
       const tr = e.target.closest("[data-transcribe]");
@@ -1186,6 +1320,14 @@
 
   // Esc fecha o popover de tradução ou a prévia (registrado uma vez só)
   document.addEventListener("keydown", (e) => {
+    if (viewer.open) {
+      if (e.key === "Escape") closeViewer();
+      else if (e.key === "ArrowLeft") nav(-1);
+      else if (e.key === "ArrowRight") nav(1);
+      else return;
+      e.preventDefault();
+      return;
+    }
     if (e.key !== "Escape") return;
     if (S.current && S.trOpen) {
       S.trOpen = false;

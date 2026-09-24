@@ -209,7 +209,7 @@
 
   // ------------------------------------------------------ áudio recebido
   const W = globalThis.OrbitaTranscribe;
-  const MAX_MEDIA_BYTES = 16 * 1024 * 1024;
+  const MAX_MEDIA_BYTES = 100 * 1024 * 1024;
 
   const b64ToBlob = (b64, mime) => {
     const bin = atob(b64);
@@ -222,8 +222,11 @@
   async function ensureMedia(messageId) {
     const hit = await C.getMedia(messageId);
     if (hit?.blob) return hit;
-    const r = await exec({ op: C.TAB_CMDS.DOWNLOAD_MEDIA, id: messageId, maxBytes: MAX_MEDIA_BYTES }, 120000);
-    await C.putMedia(messageId, b64ToBlob(r.data, r.mime));
+    const r = await exec({ op: C.TAB_CMDS.DOWNLOAD_MEDIA, id: messageId, maxBytes: MAX_MEDIA_BYTES }, 180000);
+    // o arquivo chega em pedaços de 4 MB (limite das mensagens entre as partes da extensão)
+    const parts = [];
+    for (let i = 0; i < r.chunks; i++) parts.push(b64ToBlob((await exec({ op: C.TAB_CMDS.MEDIA_CHUNK, id: messageId, index: i }, 60000)).data, r.mime));
+    await C.putMedia(messageId, new Blob(parts, { type: r.mime }));
     return C.getMedia(messageId);
   }
 
