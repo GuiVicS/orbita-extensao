@@ -20,6 +20,15 @@
   const pending = new Map(); // reqId → { resolve, reject, timer, tabId }
   const uiPorts = new Map(); // porta do painel → chatId aberto nela (ou null)
   let status = { connected: false, ready: false };
+  // Módulo desligado em Opções → Módulos: nada é sincronizado nem enviado.
+  let enabled = true;
+  C.moduleEnabled().then((v) => (enabled = v)).catch(() => {});
+  chrome.storage.onChanged.addListener((ch, area) => {
+    if (area !== "local" || !("orbita:modules" in ch)) return;
+    const was = enabled;
+    enabled = ch["orbita:modules"].newValue?.conversas !== false;
+    if (enabled && !was && status.ready) scheduleResync(500); // religado: busca o que chegou enquanto estava desligado
+  });
   // Conta do WhatsApp conectada (ex.: "5511…@c.us"). Guardada no banco para a
   // lista continuar certa com a aba fechada ou o service worker reiniciado.
   let account = null;
@@ -99,6 +108,7 @@
     }
     if (msg?.kind !== "event") return;
     const d = msg.data || {};
+    if (!enabled && msg.event !== "status") return;
     switch (msg.event) {
       case "status": {
         const was = entry.ready;
@@ -379,6 +389,7 @@
   }
 
   async function resync() {
+    if (!enabled) return;
     if (resyncRunning) return resyncRunning;
     resyncRunning = (async () => {
       clientIndex = null; // recarrega vínculos com o CRM
@@ -531,6 +542,7 @@
 
   // ------------------------------------------------------ pedidos do painel
   async function handle(req) {
+    if (req.op !== C.OPS.STATUS && !(await C.moduleEnabled())) throw new Error("As Conversas estão desligadas em Opções → Módulos.");
     switch (req.op) {
       case C.OPS.STATUS:
         return status;

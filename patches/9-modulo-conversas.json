@@ -1,0 +1,10 @@
+[
+  {
+    "before": "No={crm:!1,agenda:!1}",
+    "after": "No={crm:!1,agenda:!1,conversas:!0}"
+  },
+  {
+    "before": "{path:\"/conversas\",label:\"Conversas\",icon:",
+    "after": "{path:\"/conversas\",label:\"Conversas\",module:\"conversas\",icon:"
+  }
+]

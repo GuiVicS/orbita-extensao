@@ -43,6 +43,12 @@
     QR_CANCEL: "qr.cancel",
   };
 
+  // Módulo ligado/desligado em Opções → Módulos (padrão: ligado).
+  async function moduleEnabled() {
+    const m = (await chrome.storage.local.get("orbita:modules"))["orbita:modules"] || {};
+    return m.conversas !== false;
+  }
+
   // Preferências das Conversas (chrome.storage.local). Sem chaves de API aqui:
   // a tradução usa o provedor configurado em "orbita:ai".
   const SETTINGS_KEY = "orbita:chat:settings";
@@ -379,7 +385,7 @@
 
   globalThis.OrbitaChat = {
     CHANNEL, PORT_TAB, PORT_UI, OPS, EVENTS, TAB_CMDS,
-    SETTINGS_KEY, DEFAULT_SETTINGS, loadSettings, saveSettings, contactLangOf, sourceText, getMedia, putMedia, AI_VOICE_NOTICE,
+    moduleEnabled, SETTINGS_KEY, DEFAULT_SETTINGS, loadSettings, saveSettings, contactLangOf, sourceText, getMedia, putMedia, AI_VOICE_NOTICE,
     digits, phoneVariants, formatPhone, mergeMessage, previewOf,
     DB_NAME, openDb, getChat, listChats, updateChat, upsertMessages, patchMessage, messagesPage, countMessages, getMeta, setMeta,
     openMainDbReadOnly, loadClientIndex, findClient,

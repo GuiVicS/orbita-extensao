@@ -324,3 +324,4 @@ body.expanded .msgs { padding-left: 10%; padding-right: 10%; }
 .qrs { border: 1px solid var(--border); border-radius: 10px; padding: 8px; display: grid; gap: 4px; }
 .qrs small { color: var(--muted-foreground); font-size: 12px; }
 .qrk { display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; font-weight: 600; color: var(--muted-foreground); }
+.app.off { grid-template-columns: 1fr; }

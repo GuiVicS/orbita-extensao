@@ -1531,7 +1531,19 @@
   });
 
   // ----------------------------------------------------------------- início
+  // módulo desligado em Opções → Módulos
+  chrome.storage.onChanged.addListener((ch, area) => {
+    const c = area === "local" && ch["orbita:modules"];
+    if (c && (c.oldValue?.conversas !== false) !== (c.newValue?.conversas !== false)) location.reload();
+  });
+
   (async () => {
+    if (!(await C.moduleEnabled())) {
+      app.innerHTML = `<div class="app off"><div class="welcome"><div><div class="z">${icon("chat", 30)}</div><b>As Conversas estão desligadas</b>
+        Ligue em <a href="#" id="openOpts">Opções da extensão → Módulos</a> para ver e responder seus contatos por aqui.</div></div></div>`;
+      $("#openOpts").onclick = (e) => (e.preventDefault(), chrome.runtime.openOptionsPage());
+      return;
+    }
     welcome();
     connect();
     S.settings = await C.loadSettings();
