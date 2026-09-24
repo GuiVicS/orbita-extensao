@@ -658,6 +658,12 @@
         return msg;
       }
 
+      case C.OPS.CORRECT: {
+        const settings = await C.loadSettings();
+        const r = await T.correct({ text: String(req.text || ""), lang: settings.myLang });
+        return { text: r.text, changed: r.changed };
+      }
+
       case C.OPS.SEND_FILE:
         return sendFile(req);
 

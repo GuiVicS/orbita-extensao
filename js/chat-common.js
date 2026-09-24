@@ -43,6 +43,7 @@
     QR_CANCEL: "qr.cancel",
     DELETE_MESSAGE: "message.delete", // apagar para mim / para todos
     SEND_FILE: "chat.sendFile", // anexo colado, arrastado ou escolhido (foto, vídeo, documento…)
+    CORRECT: "text.correct", // corretor: ortografia e gramática do texto antes de enviar
   };
 
   // Módulo ligado/desligado em Opções → Módulos (padrão: ligado).
@@ -59,6 +60,8 @@
     defaultContactLang: "en", // idioma do contato quando ainda não foi detectado
     tone: "informal",
     requirePreview: true, // mostrar a tradução antes de enviar
+    autoCorrect: false, // corrigir ortografia e gramática antes de enviar (sem tradução)
+    autoCorrectReview: true, // mostrar a correção antes de enviar
     contextMessages: 6, // mensagens anteriores enviadas à IA como contexto
     glossary: [], // [{ term, translation?, keep? }]
     privacyAccepted: false,
@@ -161,6 +164,26 @@
       if (existing.translationStatus) merged.translationStatus = "stale";
     }
     return merged;
+  }
+
+  // Diferença por palavras: os pedaços de `b`, marcando o que não existe em `a`
+  // (usado para destacar o que o corretor mudou). Textos grandes: tudo sem marca.
+  function diffWords(a, b) {
+    const A = String(a ?? "").split(/(\s+)/).filter(Boolean);
+    const B = String(b ?? "").split(/(\s+)/).filter(Boolean);
+    if (A.length * B.length > 1e6) return B.map((t) => ({ t, changed: false }));
+    const L = Array.from({ length: A.length + 1 }, () => new Uint16Array(B.length + 1));
+    for (let i = A.length - 1; i >= 0; i--) for (let j = B.length - 1; j >= 0; j--) L[i][j] = A[i] === B[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    const out = [];
+    let i = 0;
+    for (let j = 0; j < B.length; j++) {
+      while (i < A.length && A[i] !== B[j] && L[i + 1][j] >= L[i][j + 1]) i++;
+      if (i < A.length && A[i] === B[j]) {
+        out.push({ t: B[j], changed: false });
+        i++;
+      } else out.push({ t: B[j], changed: !/^\s+$/.test(B[j]) });
+    }
+    return out;
   }
 
   // Texto que representa a mensagem para tradução: a transcrição, nos áudios.
@@ -419,7 +442,7 @@
   globalThis.OrbitaChat = {
     CHANNEL, PORT_TAB, PORT_UI, OPS, EVENTS, TAB_CMDS,
     REVOKE_WINDOW_MS, canRevoke, getMessage, deleteMessageRecord,
-    moduleEnabled, SETTINGS_KEY, DEFAULT_SETTINGS, loadSettings, saveSettings, contactLangOf, sourceText, getMedia, putMedia, deleteMedia, AI_VOICE_NOTICE,
+    moduleEnabled, SETTINGS_KEY, DEFAULT_SETTINGS, loadSettings, saveSettings, contactLangOf, sourceText, getMedia, putMedia, deleteMedia, diffWords, AI_VOICE_NOTICE,
     digits, phoneVariants, formatPhone, mergeMessage, previewOf,
     DB_NAME, openDb, getChat, listChats, updateChat, upsertMessages, patchMessage, messagesPage, countMessages, getMeta, setMeta,
     openMainDbReadOnly, loadClientIndex, findClient,

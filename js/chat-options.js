@@ -13,7 +13,7 @@
   for (const sel of ["c-myLang", "c-defaultContactLang"]) $(sel).innerHTML = Object.entries(LANGS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
 
   // campos simples: id "c-<chave>" ↔ settings[chave]
-  const FIELDS = ["myLang", "defaultContactLang", "tone", "contextMessages", "requirePreview", "transcriptionProvider", "maxAudioSec", "transcribeOnOpen", "fishVoiceId", "fishModel", "voiceSpeed", "maxVoiceSec", "maxTtsChars", "aiVoiceNotice"];
+  const FIELDS = ["myLang", "defaultContactLang", "tone", "contextMessages", "requirePreview", "autoCorrect", "autoCorrectReview", "transcriptionProvider", "maxAudioSec", "transcribeOnOpen", "fishVoiceId", "fishModel", "voiceSpeed", "maxVoiceSec", "maxTtsChars", "aiVoiceNotice"];
   const LIMITS = { contextMessages: [0, 12], maxAudioSec: [10, 900], voiceSpeed: [0.5, 2], maxVoiceSec: [5, 300], maxTtsChars: [50, 3000] };
   let glossary = [];
 

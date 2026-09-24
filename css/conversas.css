@@ -369,3 +369,6 @@ body.expanded .msgs { padding-left: 10%; padding-right: 10%; }
 .dropzone > div { display: grid; justify-items: center; gap: 6px; color: var(--primary); text-align: center; }
 .dropzone b { font-size: 17px; }
 .dropzone small { color: var(--muted-foreground); }
+
+/* corretor automático: palavras alteradas na prévia */
+.pvtext.fixd mark { background: color-mix(in oklch, var(--warning) 45%, transparent); color: inherit; border-radius: 4px; padding: 0 2px; }

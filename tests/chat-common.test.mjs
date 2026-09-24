@@ -59,3 +59,10 @@ test("apagar para todos: só as suas e dentro de 60 h", () => {
   assert.equal(C.canRevoke({ id: "a", fromMe: true, revoked: true, ts: now }, now), false);
   assert.equal(C.canRevoke({ id: "pending-1", fromMe: true, ts: now }, now), false);
 });
+
+test("diffWords destaca só as palavras que mudaram", () => {
+  const d = C.diffWords("ola voce pode vir amanha", "Olá, você pode vir amanhã");
+  assert.deepEqual(d.filter((w) => w.changed).map((w) => w.t), ["Olá,", "você", "amanhã"]);
+  assert.equal(d.map((w) => w.t).join(""), "Olá, você pode vir amanhã");
+  assert.deepEqual(C.diffWords("igual", "igual"), [{ t: "igual", changed: false }]);
+});

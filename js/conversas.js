@@ -64,6 +64,7 @@
     languages: '<path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/>',
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+    spellcheck: '<path d="m6 16 6-12 6 12"/><path d="M8 12h8"/><path d="m16 20 2 2 4-4"/>',
     file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
     left: '<path d="m15 18-6-6 6-6"/>',
@@ -723,6 +724,14 @@
     $("#sendBtn").disabled = !st.ok || !ta.value.trim() || Boolean(S.voice);
     $("#micBtn").disabled = !st.ok || Boolean(S.voice) || Boolean(S.preview);
     $("#attachBtn").disabled = !st.ok || Boolean(S.voice);
+    const fb = $("#fixBtn");
+    const fixOn = Boolean(S.settings?.autoCorrect);
+    fb.classList.toggle("on", fixOn && !translating());
+    fb.setAttribute("aria-pressed", String(fixOn));
+    fb.title = translating()
+      ? "Corretor automático: não é usado com a tradução ligada (a IA já ajusta o texto ao traduzir)"
+      : `Corretor automático ${fixOn ? "ligado" : "desligado"}: ${fixOn ? "a IA corrige ortografia e gramática antes de enviar. Clique para desligar." : "clique para a IA corrigir ortografia e gramática antes de enviar."}`;
+    fb.setAttribute("aria-label", fb.title);
     const vb = $("#voiceBtn");
     vb.disabled = !st.ok;
     vb.classList.toggle("on", S.voiceMode);
@@ -791,6 +800,7 @@
         <input type="file" id="fileIn" multiple hidden>
         <button class="cbtn" id="micBtn" type="button" aria-label="Gravar em ${esc(langLabel(S.settings?.myLang || "pt"))} (vira texto para revisar)" title="Gravar sua fala: vira texto para você revisar">${icon("mic", 18)}</button>
         <button class="cbtn" id="voiceBtn" type="button" aria-pressed="false" aria-label="Enviar como áudio com voz gerada" title="Enviar como áudio (voz gerada pelo Fish Audio)">${icon("speaker", 18)}</button>
+        <button class="cbtn" id="fixBtn" type="button" aria-pressed="false" aria-label="Corretor automático">${icon("spellcheck", 18)}</button>
         <label class="sr" for="text">Mensagem</label><textarea id="text" rows="1"></textarea>
         <button class="send" id="sendBtn" type="submit" aria-label="Enviar mensagem" disabled>${icon("send", 18)}</button></form>
       <div class="qrbar" id="qrbar" aria-label="Respostas rápidas"></div>`;
@@ -844,6 +854,7 @@
       }
     });
     $("#micBtn").addEventListener("click", () => startRecording());
+    $("#fixBtn").addEventListener("click", toggleAutoCorrect);
     bindAttach();
     $("#voiceBtn").addEventListener("click", () => {
       S.voiceMode = !S.voiceMode;
@@ -919,6 +930,7 @@
     if (S.voice) return renderVoice(box);
     const p = S.preview;
     if (!p) return void (box.innerHTML = "");
+    if (p.kind === "fix") return renderFix(box, p);
     let body;
     if (p.status === "loading") body = `<div class="pvline">${icon("spinner", 14, 'class="spin"')} Traduzindo para ${esc(langLabel(C.contactLangOf(S.current, S.settings)))}…</div>`;
     else if (p.status === "error") body = `<div class="pvline err">${icon("alert", 14)} <span>Não foi possível traduzir: ${esc(p.error.replace(/\.$/, ""))}. <b>Nada foi enviado.</b></span></div>`;
@@ -963,6 +975,81 @@
     renderPreview();
   }
 
+  // ---- corretor automático (opcional, sem tradução): a IA corrige
+  // ortografia e gramática; a prévia mostra o que mudou antes de enviar.
+  async function toggleAutoCorrect() {
+    const on = !S.settings.autoCorrect;
+    if (on && !S.settings.privacyAccepted) {
+      if (!(await privacyDialog("corretor"))) return;
+      S.settings = await C.saveSettings({ privacyAccepted: true });
+    }
+    S.settings = await C.saveSettings({ autoCorrect: on });
+    renderComposer();
+    toast(on ? "Corretor ligado: o texto é corrigido antes de enviar." : "Corretor desligado.");
+    $("#text")?.focus();
+  }
+
+  async function requestCorrection(text) {
+    const chatId = S.current.chatId;
+    S.preview = { kind: "fix", textPt: text, status: "loading" };
+    $("#text").readOnly = true;
+    renderPreview();
+    renderComposer();
+    let r;
+    try {
+      r = await call(C.OPS.CORRECT, { text });
+    } catch (e) {
+      if (S.current?.chatId !== chatId || S.preview?.kind !== "fix" || S.preview.textPt !== text) return;
+      S.preview = { kind: "fix", textPt: text, status: "error", error: e.message };
+      return renderPreview();
+    }
+    if (S.current?.chatId !== chatId || S.preview?.kind !== "fix" || S.preview.textPt !== text) return;
+    if (!r.changed || !S.settings.autoCorrectReview) return sendFixed(r.text); // nada a corrigir, ou envio direto
+    S.preview = { kind: "fix", textPt: text, status: "ready", fixed: r.text };
+    renderPreview();
+  }
+
+  function sendFixed(text) {
+    const ta = $("#text");
+    ta.value = text;
+    S.fixedText = text; // já passou pelo corretor: não corrige de novo
+    sendText();
+  }
+
+  function renderFix(box, p) {
+    let body;
+    let acts = `<button class="btn" id="fxCancel" type="button">Cancelar</button><button class="btn" id="fxEdit" type="button">Editar</button>`;
+    if (p.status === "loading") {
+      body = `<div class="pvline">${icon("spinner", 14, 'class="spin"')} Corrigindo o texto…</div>`;
+      acts += `<button class="btn" id="fxOrig" type="button">Enviar sem corrigir</button>`;
+    } else if (p.status === "error") {
+      body = `<div class="pvline err">${icon("alert", 14)} <span>Não foi possível corrigir: ${esc(p.error.replace(/\.$/, ""))}. <b>Nada foi enviado.</b></span></div>`;
+      acts += `<button class="btn" id="fxRetry" type="button">Tentar de novo</button><button class="btn primary" id="fxOrig" type="button">${icon("send", 14)} Enviar sem corrigir</button>`;
+    } else {
+      body = `<div class="pvsec"><small>Corrigido · as mudanças estão destacadas</small><div class="pvtext fixd">${C.diffWords(p.textPt, p.fixed)
+        .map((w) => (w.changed ? `<mark>${esc(w.t)}</mark>` : esc(w.t)))
+        .join("")}</div></div>
+        <div class="pvsec back"><small>Você escreveu</small><div>${esc(p.textPt)}</div></div>`;
+      acts += `<button class="btn" id="fxOrig" type="button">Enviar original</button><button class="btn primary" id="fxSend" type="button">${icon("send", 14)} Enviar corrigido</button>`;
+    }
+    box.innerHTML = `<div class="pv" role="region" aria-label="Correção do texto">${body}<div class="pvact">${acts}</div></div>`;
+    $("#fxCancel").onclick = () => closePreview(true);
+    $("#fxEdit").onclick = () => {
+      const t = p.fixed ?? p.textPt;
+      closePreview(false);
+      $("#text").value = t;
+      S.fixedText = p.fixed; // editar o corrigido e enviar não passa pelo corretor de novo
+      renderComposer();
+    };
+    if ($("#fxRetry")) $("#fxRetry").onclick = () => requestCorrection(p.textPt);
+    if ($("#fxOrig")) $("#fxOrig").onclick = () => sendFixed(p.textPt);
+    const primary = $("#fxSend") || (p.status === "error" ? $("#fxOrig") : null);
+    if (primary) {
+      if ($("#fxSend")) $("#fxSend").onclick = () => sendFixed(p.fixed);
+      primary.focus();
+    }
+  }
+
   function submitComposer() {
     const text = $("#text").value;
     if (!text.trim() || !composerState().ok || !S.current || S.voice) return;
@@ -972,6 +1059,8 @@
       if (S.preview) return S.preview.status === "ready" ? generateVoice(text) : undefined;
       return requestPreview(text); // confere a tradução antes de gastar com voz
     }
+    if (S.preview?.kind === "fix") return S.preview.status === "ready" ? sendFixed(S.preview.fixed) : undefined;
+    if (!translating() && S.settings.autoCorrect && text !== S.fixedText) return requestCorrection(text);
     if (!translating()) return sendText();
     if (S.preview) return S.preview.status === "ready" ? sendText() : undefined;
     if (!S.settings.requirePreview) return sendText({ skipPreview: true });
@@ -1339,17 +1428,18 @@
   }
 
   // ---- aviso de privacidade (primeira vez que a tradução é ligada)
-  function privacyDialog() {
+  function privacyDialog(what = "tradução") {
+    const fix = what === "corretor";
     return new Promise((resolve) => {
       const wrap = document.createElement("div");
       wrap.className = "modal";
       wrap.innerHTML = `<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="pvTitle">
-        <div class="dz">${icon("shield", 22)}</div><h2 id="pvTitle">Antes de ligar a tradução</h2>
-        <ul><li>O texto das mensagens desta conversa (e algumas mensagens anteriores, como contexto) é enviado ao <b>provedor de IA configurado nas Opções</b> para ser traduzido.</li>
+        <div class="dz">${icon("shield", 22)}</div><h2 id="pvTitle">${fix ? "Antes de ligar o corretor" : "Antes de ligar a tradução"}</h2>
+        <ul><li>${fix ? "O texto que você escreve é enviado ao <b>provedor de IA configurado nas Opções</b> para ser corrigido, antes de ir ao contato." : "O texto das mensagens desta conversa (e algumas mensagens anteriores, como contexto) é enviado ao <b>provedor de IA configurado nas Opções</b> para ser traduzido."}</li>
         <li>Nada é enviado ao contato sem você revisar e clicar em Enviar.</li>
         <li>As traduções ficam salvas só neste computador. A chave da IA não entra no backup.</li>
         <li>Use com clientes que concordaram em ser atendidos por você (LGPD).</li></ul>
-        <div class="pvact"><button class="btn" data-a="no">Agora não</button><button class="btn primary" data-a="yes">Entendi, ligar tradução</button></div></div>`;
+        <div class="pvact"><button class="btn" data-a="no">Agora não</button><button class="btn primary" data-a="yes">Entendi, ligar ${fix ? "o corretor" : "tradução"}</button></div></div>`;
       document.body.append(wrap);
       wrap.querySelector('[data-a="yes"]').focus();
       wrap.addEventListener("click", (e) => {

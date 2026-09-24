@@ -114,3 +114,26 @@ test("pickModel ignora modelos que não são de conversa", () => {
   assert.equal(T.pickModel(["whisper-large-v3", "llama-3.3-70b-versatile", "gpt-oss-120b"], "groq"), "gpt-oss-120b");
   assert.equal(T.pickModel(["tts-1", "whisper-1"], "openai"), null);
 });
+
+test("corretor: corrige, guarda em cache e mantém espaços das pontas", async () => {
+  responder = () => oa('{"corrected":"Olá, você pode vir amanhã às 10h?"}');
+  const r = await T.correct({ text: "ola voce pode vir amanha as 10h? ", lang: "pt" });
+  assert.deepEqual(r, { text: "Olá, você pode vir amanhã às 10h? ", changed: true });
+  assert.match(calls[0].body.messages[0].content, /MINIMUM changes/);
+  assert.match(calls[0].body.messages[0].content, /Brazilian Portuguese/);
+  const again = await T.correct({ text: "ola voce pode vir amanha as 10h? ", lang: "pt" });
+  assert.equal(again.cached, true);
+  assert.equal(calls.length, 1);
+});
+
+test("corretor: sem erros devolve igual; reescrita ou número alterado é descartado", async () => {
+  responder = () => oa('{"corrected":"Tudo certo."}');
+  assert.equal((await T.correct({ text: "Tudo certo." })).changed, false);
+  responder = () => oa('{"corrected":"Custa 25 reais."}');
+  await assert.rejects(T.correct({ text: "custa 20 reais" }), { code: "INVALID_OUTPUT" });
+  assert.equal(calls.length, 3); // 1 + 2 tentativas
+  responder = () => oa('{"corrected":"Prezado cliente, gostaríamos de informar que o seu pedido já se encontra disponível para retirada em nossa loja."}');
+  await assert.rejects(T.correct({ text: "pedido pronto, pode buscar" }), /mudou demais/);
+  assert.match(T.checkCorrection("oi {{nome}}", "Oi {{name}}").join(), /variáveis/);
+  assert.throws(() => T.parseCorrection("Olá"), { code: "INVALID_OUTPUT" });
+});

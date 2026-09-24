@@ -93,6 +93,11 @@
     <label class="inline sub"><input type=checkbox id=c-requirePreview> Mostrar a tradução antes de enviar (recomendado)</label>
     <p class=hint id=previewWarn hidden style="color:var(--err)">Sem a prévia, a mensagem é traduzida e enviada direto. Se a IA errar o sentido, você só vai perceber depois.</p>
 
+    <h3>Corretor automático</h3>
+    <label class="inline sub"><input type=checkbox id=c-autoCorrect> Corrigir ortografia e gramática antes de enviar</label>
+    <label class="inline sub"><input type=checkbox id=c-autoCorrectReview> Mostrar a correção antes de enviar (recomendado)</label>
+    <p class=hint>Vale para as mensagens de texto das Conversas quando a tradução está desligada. Também dá para ligar e desligar pelo botão com o <b>A e o ✓</b>, ao lado do campo de mensagem. O texto é enviado ao provedor de IA configurado acima.</p>
+
     <h3>Transcrição de áudios</h3>
     <div class=grid2>
       <div><label for=c-transcriptionProvider>Serviço</label><select id=c-transcriptionProvider><option value=auto>Automático (Groq, senão OpenAI)</option><option value=groq>Groq (Whisper)</option><option value=openai>OpenAI (Whisper)</option></select></div>
