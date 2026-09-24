@@ -1,2 +1,5 @@
 .profile-chat/
-node_modules/
+.profile-ui/
+.profile-*/
+.shots/
+node_modules

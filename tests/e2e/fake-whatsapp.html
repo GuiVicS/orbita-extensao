@@ -8,9 +8,11 @@ const store = {
   "5511999998888@c.us": [mk("5511999998888@c.us", 1, false, "Hi, I saw your ad", now - 3600), mk("5511999998888@c.us", 2, true, "Olá!", now - 3500), mk("5511999998888@c.us", 3, false, "Can you send the price?", now - 3400)],
   "123456789@lid": [mk("123456789@lid", 1, false, "Hello there", now - 7200)],
 };
+store["5511912345678@c.us"] = Array.from({ length: 120 }, (_, i) => mk("5511912345678@c.us", i, i % 3 === 0, `Mensagem número ${i + 1}`, now - 86400 * 3 + i * 600));
 if (window.__extra) store["5511999998888@c.us"].push(mk("5511999998888@c.us", 4, false, "Missed while offline", now + 5));
 const chats = {
   "5511999998888@c.us": { id: { _serialized: "5511999998888@c.us" }, contact: { name: "John Smith", pushname: "John" }, unreadCount: 2 },
+  "5511912345678@c.us": { id: { _serialized: "5511912345678@c.us" }, contact: { name: "Carla Souza" }, unreadCount: 0 },
   "123456789@lid": { id: { _serialized: "123456789@lid" }, contact: { pushname: "Anna" }, formattedTitle: "Anna", unreadCount: 0 },
 };
 for (const [id, c] of Object.entries(chats)) { c.t = store[id].at(-1).t; c.msgs = { last: () => store[id].at(-1) }; }

@@ -1,0 +1,10 @@
+[
+  {
+    "before": "{path:\"/respostas-rapidas\",label:\"Respostas rápidas\",",
+    "after": "{path:\"/conversas\",label:\"Conversas\",icon:bs(\"message-circle\",[[\"path\",{d:\"M7.9 20A9 9 0 1 0 4 16.1L2 22Z\",key:\"orbitachat\"}]])},{path:\"/respostas-rapidas\",label:\"Respostas rápidas\","
+  },
+  {
+    "before": ":\"/respostas-rapidas\"===e?",
+    "after": ":\"/conversas\"===e?(0,i().jsx)(\"iframe\",{src:\"conversas.html?embed=1&\"+(window.location.hash.split(\"?\")[1]||\"\"),title:\"Conversas\",allow:\"microphone\",style:{display:\"block\",width:\"100%\",height:\"calc(100vh - 4rem)\",border:0,margin:\"-2rem 0\",background:\"transparent\"}}):\"/respostas-rapidas\"===e?"
+  }
+]

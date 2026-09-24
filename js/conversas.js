@@ -1,0 +1,582 @@
+// Conversas — tela de chat do painel (conversas.html, aberta em #/conversas).
+// Só fala com o service worker (js/chat-sync.js): pedidos por
+// chrome.runtime.sendMessage no canal "orbita:chat" e eventos ao vivo pela
+// porta "orbita-chat-ui". Nunca fala direto com a aba do WhatsApp.
+(() => {
+  "use strict";
+  const C = globalThis.OrbitaChat;
+  const params = new URLSearchParams(location.search);
+  const EMBED = params.has("embed");
+  if (EMBED) document.body.classList.add("embed");
+
+  // ------------------------------------------------------------------ tema
+  const mq = matchMedia("(prefers-color-scheme: dark)");
+  function applyTheme() {
+    let dark;
+    if (EMBED) {
+      try {
+        dark = parent.document.documentElement.classList.contains("dark");
+      } catch {}
+    }
+    if (dark === undefined) {
+      let t = "system";
+      try {
+        t = localStorage.getItem("orbita-theme") || "system";
+      } catch {}
+      dark = t === "dark" || (t === "system" && mq.matches);
+    }
+    document.documentElement.classList.toggle("dark", dark);
+  }
+  applyTheme();
+  mq.addEventListener("change", applyTheme);
+  if (EMBED) {
+    try {
+      new MutationObserver(applyTheme).observe(parent.document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    } catch {}
+  }
+
+  // ----------------------------------------------------------------- ícones (Lucide, ISC)
+  const PATHS = {
+    chat: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
+    search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+    refresh: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+    panel: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>',
+    send: '<path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
+    checks: '<path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/>',
+    clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+    mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>',
+    clip: '<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+    ban: '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
+    down: '<path d="m6 9 6 6 6-6"/>',
+    external: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+    alert: '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
+    spinner: '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
+  };
+  const icon = (n, s = 16, extra = "") => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${PATHS[n]}</svg>`;
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+  // ----------------------------------------------------------------- formatação
+  const timeFmt = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const dateFmt = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+  const longFmt = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+  const dayKey = (ts) => new Date(ts).toDateString();
+  function listTime(ts) {
+    if (!ts) return "";
+    const d = new Date(ts);
+    const today = new Date();
+    if (d.toDateString() === today.toDateString()) return timeFmt.format(d);
+    const y = new Date(today);
+    y.setDate(y.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return "Ontem";
+    return dateFmt.format(d);
+  }
+  function dayLabel(ts) {
+    const d = new Date(ts);
+    const today = new Date();
+    if (d.toDateString() === today.toDateString()) return "Hoje";
+    const y = new Date(today);
+    y.setDate(y.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return "Ontem";
+    return longFmt.format(d);
+  }
+  // formatação do WhatsApp: *negrito* _itálico_ ~tachado~ ```mono``` e links
+  function waFormat(text) {
+    return esc(text)
+      .replace(/```([^`]+)```/g, "<code>$1</code>")
+      .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,!?]|$)/g, "$1<b>$2</b>")
+      .replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,!?]|$)/g, "$1<i>$2</i>")
+      .replace(/(^|[\s(])~([^~\n]+)~(?=[\s).,!?]|$)/g, "$1<s>$2</s>")
+      .replace(/\bhttps?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`);
+  }
+  const PALETTE = ["#7c6cf0", "#0ea5e9", "#14b8a6", "#f59e0b", "#ec4899", "#6366f1", "#22c55e", "#ef4444"];
+  function avatarColor(id) {
+    let h = 0;
+    for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return PALETTE[h % PALETTE.length];
+  }
+  const displayName = (c) => c?.client?.name || c?.name || c?.pushname || C.formatPhone(c?.phone) || "Contato";
+  const initials = (name) => name.replace(/[^\p{L}\p{N} ]/gu, "").trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() || "").join("") || "#";
+  const avatar = (c, stage) => `<span class="av" style="background:${avatarColor(c.chatId)}">${esc(initials(displayName(c)))}${stage ? `<i class="stage" style="background:${esc(stage.color)}" title="${esc(stage.name)}"></i>` : ""}</span>`;
+  function tick(m) {
+    if (!m.fromMe) return "";
+    if (m._pending) return `<span class="tick">${icon("clock", 12)}</span>`;
+    if (m.ack >= 3) return `<span class="tick read" aria-label="Lida">${icon("checks", 15)}</span>`;
+    if (m.ack === 2) return `<span class="tick" aria-label="Entregue">${icon("checks", 15)}</span>`;
+    return `<span class="tick" aria-label="Enviada">${icon("check", 14)}</span>`;
+  }
+
+  // ---------------------------------------------------------------- estado
+  const S = {
+    status: { connected: false, ready: false },
+    chats: [],
+    filter: "all",
+    query: "",
+    current: null, // chat aberto
+    messages: [], // mensagens carregadas do chat aberto (ordem cronológica)
+    complete: false,
+    loadingOlder: false,
+    stages: new Map(),
+    sideOpen: true,
+    unseenBelow: 0,
+  };
+  try {
+    S.sideOpen = localStorage.getItem("orbita-chat-side") !== "0";
+  } catch {}
+
+  const $ = (sel) => document.querySelector(sel);
+  const app = document.getElementById("app");
+
+  function toast(text, kind = "") {
+    const box = $(".toasts");
+    const el = document.createElement("div");
+    el.className = `toast ${kind}`;
+    el.setAttribute("role", "status");
+    el.textContent = text;
+    box.append(el);
+    setTimeout(() => el.remove(), kind === "err" ? 6000 : 3000);
+  }
+
+  async function call(op, extra = {}) {
+    const r = await chrome.runtime.sendMessage({ channel: C.CHANNEL, op, ...extra });
+    if (!r) throw new Error("A extensão não respondeu. Recarregue a página.");
+    if (!r.ok) throw new Error(r.error);
+    return r.data;
+  }
+
+  // etapas do funil (cor e nome) direto do banco do CRM, só leitura
+  async function loadStages() {
+    const db = await C.openMainDbReadOnly();
+    if (!db) return;
+    try {
+      if (!db.objectStoreNames.contains("crmStages")) return;
+      const all = await new Promise((res, rej) => {
+        const r = db.transaction("crmStages").objectStore("crmStages").getAll();
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => rej(r.error);
+      });
+      S.stages = new Map(all.map((s) => [s.id, s]));
+    } finally {
+      db.close();
+    }
+  }
+  const stageOf = (c) => (c?.client ? S.stages.get(c.client.stageId) : null);
+
+  // ================================================================ layout
+  app.innerHTML = `<div class="app">
+    <section class="list" aria-label="Conversas">
+      <header><h1>Conversas</h1><span class="status" id="status" role="status"><i></i><span>…</span></span>
+        <button class="ibtn" id="refresh" aria-label="Atualizar lista de conversas" title="Atualizar">${icon("refresh", 17)}</button></header>
+      <div class="search">${icon("search", 15)}<input id="q" type="search" placeholder="Buscar nome ou número" aria-label="Buscar conversas"></div>
+      <div class="filters" role="tablist" aria-label="Filtrar">
+        <button data-filter="all" class="on" role="tab">Todas</button><button data-filter="unread" role="tab">Não lidas</button><button data-filter="crm" role="tab">Clientes do CRM</button></div>
+      <div class="items" id="items" role="listbox" aria-label="Lista de conversas"></div>
+    </section>
+    <section class="thread" id="thread" aria-label="Conversa aberta"></section>
+    <aside class="side" id="side" aria-label="Dados do cliente" hidden></aside>
+  </div><div class="toasts" aria-live="polite"></div>`;
+
+  // ---------------------------------------------------------------- lista
+  function filteredChats() {
+    const q = S.query.trim().toLowerCase();
+    const qd = C.digits(q);
+    return S.chats.filter((c) => {
+      if (S.filter === "unread" && !c.unreadCount) return false;
+      if (S.filter === "crm" && !c.client) return false;
+      if (!q) return true;
+      return displayName(c).toLowerCase().includes(q) || (qd && (c.phone || "").includes(qd));
+    });
+  }
+
+  function renderStatus() {
+    const el = $("#status");
+    const s = S.status;
+    el.className = `status ${s.ready ? "ready" : s.connected ? "loading" : ""}`;
+    el.querySelector("span").textContent = s.ready ? "WhatsApp conectado" : s.connected ? "Carregando…" : "WhatsApp fechado";
+    el.title = s.ready ? "A aba do WhatsApp Web está aberta e pronta." : s.connected ? "A aba do WhatsApp Web está carregando." : "Abra o WhatsApp Web em uma aba do Chrome para receber e enviar mensagens.";
+  }
+
+  function itemHtml(c) {
+    const on = S.current?.chatId === c.chatId;
+    return `<button class="item ${on ? "on" : ""} ${c.unreadCount ? "unread" : ""}" data-chat="${esc(c.chatId)}" role="option" aria-selected="${on}">
+      ${avatar(c, stageOf(c))}
+      <span class="main"><span class="row1"><span class="name">${esc(displayName(c))}</span><time>${esc(listTime(c.lastMessageAt))}</time></span>
+      <span class="row2"><span class="prev">${c.lastFromMe ? `<span class="tick">${icon("check", 13)}</span>` : ""}<span>${esc((c.lastPreview || "").replace(/([*_~])([^*_~\n]+)\1/g, "$2"))}</span></span>
+      ${c.unreadCount ? `<span class="badge" aria-label="${c.unreadCount} não lidas">${c.unreadCount > 99 ? "99+" : c.unreadCount}</span>` : ""}</span></span></button>`;
+  }
+
+  function renderList() {
+    const items = $("#items");
+    const list = filteredChats();
+    items.innerHTML = list.length
+      ? list.map(itemHtml).join("")
+      : `<div class="empty">${S.chats.length ? "Nenhuma conversa com esse filtro." : S.status.ready ? "Nenhuma conversa ainda." : "As conversas aparecem aqui quando o WhatsApp Web estiver aberto numa aba."}</div>`;
+  }
+
+  async function loadChats() {
+    S.chats = await call(C.OPS.LIST);
+    if (S.current) S.current = S.chats.find((c) => c.chatId === S.current.chatId) || S.current;
+    renderList();
+  }
+
+  $("#items").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-chat]");
+    if (b) openChat(b.dataset.chat);
+  });
+  $("#q").addEventListener("input", (e) => {
+    S.query = e.target.value;
+    renderList();
+  });
+  document.querySelector(".filters").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-filter]");
+    if (!b) return;
+    S.filter = b.dataset.filter;
+    document.querySelectorAll(".filters button").forEach((x) => x.classList.toggle("on", x === b));
+    renderList();
+  });
+  $("#refresh").addEventListener("click", async (e) => {
+    const b = e.currentTarget;
+    b.innerHTML = icon("spinner", 17, 'class="spin"');
+    try {
+      S.chats = await call(C.OPS.REFRESH);
+      renderList();
+    } catch (err) {
+      toast(err.message, "err");
+    } finally {
+      b.innerHTML = icon("refresh", 17);
+    }
+  });
+
+  // --------------------------------------------------------------- conversa
+  function welcome() {
+    $("#thread").innerHTML = `<div class="welcome"><div><div class="z">${icon("chat", 30)}</div><b>Suas conversas do WhatsApp</b>
+      Escolha uma conversa à esquerda. As mensagens chegam em tempo real enquanto a aba do WhatsApp Web estiver aberta.</div></div>`;
+    $("#side").hidden = true;
+  }
+
+  function bubbleHtml(m, prev) {
+    let head = "";
+    if (!prev || dayKey(prev.ts) !== dayKey(m.ts)) head += `<div class="day">${esc(dayLabel(m.ts))}</div>`;
+    const first = !prev || prev.fromMe !== m.fromMe || head;
+    const meta = `<span class="meta">${m.edited ? "editada · " : ""}${esc(timeFmt.format(new Date(m.ts)))}${tick(m)}</span>`;
+    let body;
+    if (m.revoked) body = `${icon("ban", 14, 'style="display:inline;vertical-align:-2px"')} Mensagem apagada${m.text ? `<span class="cap" style="opacity:.7">“${esc(m.text)}”</span>` : ""}`;
+    else if (m.type === "audio") body = `<span class="kind">${icon("mic", 15)} ${m.audio?.ptt ? "Mensagem de voz" : "Áudio"}${m.audio?.duration ? ` · ${Math.floor(m.audio.duration / 60)}:${String(Math.round(m.audio.duration % 60)).padStart(2, "0")}` : ""}</span>${m.text ? `<span class="cap">${waFormat(m.text)}</span>` : ""}`;
+    else if (m.type === "other") body = `<span class="kind">${icon("clip", 14)} ${esc(m.label || "Mídia")}${m.filename ? `: ${esc(m.filename)}` : ""}</span>${m.text ? `<span class="cap">${waFormat(m.text)}</span>` : ""}`;
+    else body = waFormat(m.text);
+    const cls = ["b", m.fromMe ? "me" : "", first ? "first" : "", m.revoked ? "revoked" : "", m._pending ? "pending" : "", m._new ? "new" : ""].filter(Boolean).join(" ");
+    return `${head}<div class="${cls}" data-id="${esc(m.id)}">${body}${meta}</div>`;
+  }
+
+  function renderMessages({ keepScroll = false, toBottom = false } = {}) {
+    const box = $("#msgs");
+    if (!box) return;
+    const fromBottom = box.scrollHeight - box.scrollTop;
+    const top = S.complete ? `<div class="older">Início da conversa</div>` : `<div class="older" id="sentinel">${S.loadingOlder ? `${icon("spinner", 14, 'class="spin"')} Carregando mensagens antigas…` : "Role para ver mensagens antigas"}</div>`;
+    box.innerHTML = top + S.messages.map((m, i) => bubbleHtml(m, S.messages[i - 1])).join("");
+    S.messages.forEach((m) => delete m._new);
+    if (toBottom) box.scrollTop = box.scrollHeight;
+    else if (keepScroll) box.scrollTop = box.scrollHeight - fromBottom; // mantém a posição ao carregar antigas
+    observeSentinel();
+  }
+
+  let sentinelObs = null;
+  function observeSentinel() {
+    sentinelObs?.disconnect();
+    const s = $("#sentinel");
+    if (!s) return;
+    sentinelObs = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && loadOlder(), { root: $("#msgs"), rootMargin: "200px 0px 0px 0px" });
+    sentinelObs.observe(s);
+  }
+
+  async function loadOlder() {
+    if (S.loadingOlder || S.complete || !S.current || !S.messages.length) return;
+    S.loadingOlder = true;
+    const chatId = S.current.chatId;
+    renderMessages({ keepScroll: true });
+    try {
+      const oldest = S.messages[0];
+      const r = await call(C.OPS.LOAD_MORE, { chatId, beforeTs: oldest.ts, beforeId: oldest.id });
+      if (S.current?.chatId !== chatId) return;
+      const known = new Set(S.messages.map((m) => m.id));
+      S.messages = [...r.messages.filter((m) => !known.has(m.id)), ...S.messages];
+      S.complete = r.complete || r.messages.length === 0;
+    } catch (e) {
+      toast(e.message, "err");
+    } finally {
+      S.loadingOlder = false;
+      if (S.current?.chatId === chatId) renderMessages({ keepScroll: true });
+    }
+  }
+
+  function composerState() {
+    if (!S.status.connected) return { ok: false, why: "Abra o WhatsApp Web em uma aba para enviar mensagens." };
+    if (!S.status.ready) return { ok: false, why: "O WhatsApp Web ainda está carregando…" };
+    return { ok: true };
+  }
+
+  function renderComposer() {
+    const ta = $("#text");
+    if (!ta) return;
+    const st = composerState();
+    ta.disabled = !st.ok;
+    ta.placeholder = st.ok ? "Digite uma mensagem" : st.why;
+    ta.title = st.ok ? "Enter envia · Shift+Enter quebra a linha" : st.why;
+    $("#sendBtn").disabled = !st.ok || !ta.value.trim();
+  }
+
+  function renderHeader() {
+    const c = S.current;
+    const h = $("#thead");
+    if (!c || !h) return;
+    h.innerHTML = `${avatar(c, stageOf(c))}<div class="who"><b>${esc(displayName(c))}</b>
+      <small>${esc(C.formatPhone(c.phone) || "Número oculto pelo WhatsApp")}${c.client ? `<span class="chip crm">Cliente do CRM</span>` : `<span class="chip">Fora do CRM</span>`}</small></div>
+      <button class="ibtn ${S.sideOpen ? "on" : ""}" id="sideBtn" aria-label="${S.sideOpen ? "Esconder" : "Mostrar"} dados do cliente" aria-pressed="${S.sideOpen}" title="Dados do cliente">${icon("panel", 18)}</button>`;
+  }
+
+  async function openChat(chatId) {
+    const c = S.chats.find((x) => x.chatId === chatId) || { chatId };
+    S.current = c;
+    S.messages = [];
+    S.complete = false;
+    S.unseenBelow = 0;
+    renderList();
+    $("#thread").innerHTML = `<div class="thead" id="thead"></div><div id="notice"></div>
+      <div class="msgs" id="msgs" role="log" aria-live="polite" aria-label="Mensagens"><div class="older">${icon("spinner", 14, 'class="spin"')} Carregando…</div></div>
+      <button class="jump" id="jump" hidden aria-label="Ir para a última mensagem">${icon("down", 20)}</button>
+      <form class="composer" id="composer"><label class="sr" for="text">Mensagem</label><textarea id="text" rows="1"></textarea>
+        <button class="send" id="sendBtn" type="submit" aria-label="Enviar mensagem" disabled>${icon("send", 18)}</button></form>`;
+    renderHeader();
+    renderComposer();
+    renderSide();
+    bindThread();
+    port?.postMessage({ kind: "focus", chatId });
+    history.replaceState(null, "", `?${EMBED ? "embed=1&" : ""}chat=${encodeURIComponent(chatId)}`);
+    try {
+      const r = await call(C.OPS.OPEN, { chatId });
+      if (S.current?.chatId !== chatId) return;
+      if (r.chat) S.current = { ...S.current, ...r.chat };
+      S.messages = r.messages;
+      S.complete = Boolean(r.chat?.historyComplete) && r.messages.length < 50;
+      renderHeader();
+      renderSide();
+      $("#notice").innerHTML = r.warning ? `<div class="notice">${icon("alert", 14)} ${esc(r.warning)}</div>` : "";
+      renderMessages({ toBottom: true });
+      if (S.current.unreadCount) call(C.OPS.MARK_READ, { chatId }).catch(() => {});
+    } catch (e) {
+      $("#notice").innerHTML = `<div class="notice err">${icon("alert", 14)} ${esc(e.message)}</div>`;
+      renderMessages();
+    }
+    $("#text")?.focus();
+  }
+
+  function nearBottom() {
+    const box = $("#msgs");
+    return !box || box.scrollHeight - box.scrollTop - box.clientHeight < 120;
+  }
+
+  function bindThread() {
+    const ta = $("#text");
+    const grow = () => {
+      ta.style.height = "auto";
+      ta.style.height = `${Math.min(160, ta.scrollHeight + 2)}px`;
+    };
+    ta.addEventListener("input", () => {
+      grow();
+      renderComposer();
+    });
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        $("#composer").requestSubmit();
+      }
+    });
+    $("#composer").addEventListener("submit", (e) => {
+      e.preventDefault();
+      sendText();
+    });
+    $("#msgs").addEventListener("scroll", () => {
+      const nb = nearBottom();
+      $("#jump").hidden = nb;
+      if (nb && S.unseenBelow) {
+        S.unseenBelow = 0;
+        updateJump();
+      }
+    });
+    $("#jump").addEventListener("click", () => {
+      $("#msgs").scrollTop = $("#msgs").scrollHeight;
+    });
+    $("#thead").addEventListener("click", (e) => {
+      if (!e.target.closest("#sideBtn")) return;
+      S.sideOpen = !S.sideOpen;
+      try {
+        localStorage.setItem("orbita-chat-side", S.sideOpen ? "1" : "0");
+      } catch {}
+      renderHeader();
+      renderSide();
+    });
+  }
+
+  function updateJump() {
+    const j = $("#jump");
+    if (!j) return;
+    j.innerHTML = icon("down", 20) + (S.unseenBelow ? `<span class="badge">${S.unseenBelow}</span>` : "");
+  }
+
+  async function sendText() {
+    const ta = $("#text");
+    const text = ta.value;
+    if (!text.trim() || !composerState().ok || !S.current) return;
+    const chatId = S.current.chatId;
+    // bolha provisória até a confirmação do WhatsApp
+    const temp = { id: `pending-${Date.now()}`, chatId, fromMe: true, ts: Date.now(), type: "text", text, ack: 0, _pending: true, _new: true };
+    S.messages.push(temp);
+    ta.value = "";
+    ta.style.height = "auto";
+    renderComposer();
+    renderMessages({ toBottom: true });
+    try {
+      const msg = await call(C.OPS.SEND_TEXT, { chatId, text });
+      const i = S.messages.indexOf(temp);
+      if (i >= 0) {
+        if (S.messages.some((m) => m.id === msg.id)) S.messages.splice(i, 1); // o evento chegou antes
+        else S.messages[i] = msg;
+      }
+    } catch (e) {
+      S.messages = S.messages.filter((m) => m !== temp);
+      if (!ta.value) ta.value = text; // devolve o texto para não perder
+      renderComposer();
+      toast(`Não foi enviada: ${e.message}`, "err");
+    }
+    if (S.current?.chatId === chatId) renderMessages({ toBottom: true });
+  }
+
+  // ------------------------------------------------------- painel do cliente
+  const idb = (r) => new Promise((res, rej) => ((r.onsuccess = () => res(r.result)), (r.onerror = () => rej(r.error))));
+
+  async function renderSide() {
+    const side = $("#side");
+    const c = S.current;
+    if (!c || !S.sideOpen) {
+      side.hidden = true;
+      return;
+    }
+    side.hidden = false;
+    const stage = stageOf(c);
+    let extra = "";
+    if (c.client) {
+      // detalhes lidos direto do banco do CRM (só leitura)
+      const db = await C.openMainDbReadOnly();
+      let record = null;
+      let appts = [];
+      if (db) {
+        try {
+          if (db.objectStoreNames.contains("crmClients")) record = await idb(db.transaction("crmClients").objectStore("crmClients").get(c.client.phone));
+          if (db.objectStoreNames.contains("appointments"))
+            appts = (await idb(db.transaction("appointments").objectStore("appointments").index("byPhone").getAll(c.client.phone))).filter((a) => a.start >= Date.now() - 36e5).sort((a, b) => a.start - b.start).slice(0, 3);
+        } catch {}
+        db.close();
+      }
+      if (S.current?.chatId !== c.chatId) return;
+      const tags = record?.tags || c.client.tags || [];
+      const notes = Array.isArray(record?.notes) ? [...record.notes].sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 4) : [];
+      extra = `<div class="sec"><h3>Etapa do funil</h3>${stage ? `<span class="stagepill"><i style="background:${esc(stage.color)}"></i>${esc(stage.name)}</span>` : `<span class="muted">Sem etapa</span>`}</div>
+        <div class="sec"><h3>Tags</h3>${tags.length ? `<div class="tags">${tags.map((t) => `<span>${esc(t)}</span>`).join("")}</div>` : `<span class="muted">Sem tags</span>`}</div>
+        <div class="sec"><h3>Próximos compromissos</h3>${appts.length ? appts.map((a) => `<div class="appt"><b>${esc(a.title || "Compromisso")}</b><small>${esc(new Date(a.start).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }))}</small></div>`).join("") : `<span class="muted">Nenhum</span>`}</div>
+        <div class="sec"><h3>Notas</h3>${notes.length ? notes.map((n) => `<div class="note">${n.ts ? `<small>${esc(new Date(n.ts).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }))}</small>` : ""}${esc(n.text || "")}</div>`).join("") : `<span class="muted">Nenhuma nota</span>`}</div>
+        <button class="btn" id="openCrm">${icon("external", 14)} Abrir no CRM</button>`;
+    } else {
+      extra = `<div class="sec"><span class="muted">${c.phone ? "Este contato não está nas suas listas, então não aparece no CRM." : "O WhatsApp não mostra o número deste contato, então não dá para ligá-lo ao CRM."}</span></div>`;
+    }
+    side.innerHTML = `<div class="top">${avatar(c, stage)}<b>${esc(displayName(c))}</b><small>${esc(C.formatPhone(c.phone) || "")}</small>
+      ${c.pushname && c.pushname !== displayName(c) ? `<small style="display:block">~${esc(c.pushname)}</small>` : ""}</div>${extra}`;
+    $("#openCrm")?.addEventListener("click", () => {
+      const url = `#/crm?phone=${encodeURIComponent(c.client.phone)}`;
+      if (EMBED) parent.location.hash = url;
+      else location.href = `dashboard.html${url}`;
+    });
+  }
+
+  // ------------------------------------------------------------ ao vivo
+  let port = null;
+  function connect() {
+    port = chrome.runtime.connect({ name: C.PORT_UI });
+    port.onMessage.addListener(onEvent);
+    port.onDisconnect.addListener(() => {
+      port = null;
+      setTimeout(() => {
+        connect();
+        if (S.current) port?.postMessage({ kind: "focus", chatId: S.current.chatId });
+        loadChats().catch(() => {});
+      }, 1000);
+    });
+  }
+
+  let listTimer = null;
+  const scheduleList = () => {
+    clearTimeout(listTimer);
+    listTimer = setTimeout(() => loadChats().catch(() => {}), 150);
+  };
+
+  function onEvent({ event, data }) {
+    switch (event) {
+      case C.EVENTS.STATUS_CHANGED:
+        S.status = data;
+        renderStatus();
+        renderComposer();
+        if (data.ready) scheduleList();
+        return;
+      case C.EVENTS.CHAT_UPDATED:
+        if (data.all || !data.chat) return scheduleList();
+        {
+          const i = S.chats.findIndex((c) => c.chatId === data.chat.chatId);
+          if (i >= 0) S.chats.splice(i, 1);
+          S.chats.unshift(data.chat);
+          S.chats.sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
+          if (S.current?.chatId === data.chat.chatId) {
+            S.current = { ...S.current, ...data.chat };
+            if (data.chat.unreadCount) call(C.OPS.MARK_READ, { chatId: data.chat.chatId }).catch(() => {});
+          }
+          renderList();
+        }
+        return;
+      case C.EVENTS.MESSAGE_NEW:
+      case C.EVENTS.MESSAGE_UPDATED: {
+        const m = data.message;
+        if (!S.current || m.chatId !== S.current.chatId) return;
+        const i = S.messages.findIndex((x) => x.id === m.id);
+        if (i >= 0) S.messages[i] = m;
+        else {
+          // uma bolha provisória com o mesmo texto é substituída
+          const p = S.messages.findIndex((x) => x._pending && m.fromMe && x.text === m.text);
+          if (p >= 0) S.messages[p] = m;
+          else {
+            const wasBottom = nearBottom();
+            S.messages.push({ ...m, _new: true });
+            S.messages.sort((a, b) => a.ts - b.ts);
+            if (!wasBottom && !m.fromMe) {
+              S.unseenBelow++;
+              updateJump();
+            }
+            return renderMessages({ toBottom: wasBottom, keepScroll: !wasBottom });
+          }
+        }
+        return renderMessages({ keepScroll: true });
+      }
+    }
+  }
+
+  // ----------------------------------------------------------------- início
+  (async () => {
+    welcome();
+    connect();
+    await loadStages().catch(() => {});
+    try {
+      S.status = await call(C.OPS.STATUS);
+    } catch {}
+    renderStatus();
+    await loadChats().catch((e) => toast(e.message, "err"));
+    const want = params.get("chat") || (params.get("phone") && S.chats.find((c) => C.phoneVariants(params.get("phone")).includes(c.phone))?.chatId);
+    if (want) openChat(want);
+  })();
+})();
