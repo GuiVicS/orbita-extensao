@@ -4,6 +4,11 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.8.1
+
+- **Conversas em tela cheia**: botão no topo da lista de conversas (ou Esc para sair) — só o chat ocupa o monitor, sem o menu e o cabeçalho do painel. Se o navegador não permitir, o chat abre numa janela só dele.
+- Correções visuais: cabeçalho da lista de conversas não invade mais a conversa; avisos de tradução/transcrição longos quebram a linha dentro do balão.
+
 ## Novidades da 1.8.0
 
 ### Conversas: chat com tradução bilateral (texto e áudio)
@@ -58,7 +63,7 @@ aba do WhatsApp (js/chat-page.js, WA-JS) ⇄ js/chat-content.js ⇄ porta "orbit
 ```sh
 node --test tests/*.test.mjs            # unitários (motor de tradução, transcrição, voz, utilidades)
 npm i -D playwright && npx playwright install chromium
-node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options
+node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen
 ```
 
 Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web simulado (`tests/e2e/fake-whatsapp.html`) e provedores de IA/voz simulados — nenhuma chave real é usada.
@@ -136,6 +141,7 @@ Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web
 | `2-consultas.json` | `js/wa-js.js` | Até 4 consultas `queryExists` por contato (op `resolve` sem cache + `sendText` de novo, ×2 variantes do 9º dígito) | Checa chat local antes de consultar o servidor; `resolve` usa o mesmo cache (10 min) do envio |
 | `3-4-service-worker.json` | `js/service_worker.js` | Número sem WhatsApp reduzia o intervalo para 2–4 s; sem pausa por lote; sem limite diário | Intervalo normal sempre; padrão pausa de 10 min a cada 25 envios; limite diário global de 250 contatos (`settings.dailyLimit`, contador em `chrome.storage.local["orbita:dailySent"]`), retomando no dia seguinte |
 | `4-ui-defaults.json` | `js/dashboard.js`, `js/popup.js` | Padrão da UI com `batchSize: 0` | Padrão `batchSize: 25`, `batchPauseMin: 10` |
+| `8-conversas-tela-cheia.json` | `js/dashboard.js` | iframe das Conversas sem permissão de tela cheia | `allow="microphone; fullscreen"` e `allowFullScreen` |
 | `7-conversas.json` | `js/dashboard.js` | Sem chat no painel | Item “Conversas” no menu e rota `#/conversas` (página `conversas.html` em iframe) |
 | `6-respostas-rapidas-backup.json` | `js/dashboard.js` | Sem página de respostas rápidas nem backup | Item “Respostas rápidas” no menu (página `quick-replies.html` em iframe) e botões “Baixar backup” / “Restaurar backup” em Configurações (`js/backup.js`) |
 | `5-ia-groq.json` | `js/service_worker.js` | Todos os contatos recebiam o mesmo texto | Antes de cada envio o texto (ou legenda) é parafraseado pela API do Groq. Configuração em `chrome.storage.local["orbita:ai"]`, editada em `options.html` / `js/ia-options.js`. Qualquer falha, demora acima de 20 s ou alteração em `{{variáveis}}`/links → envia o texto original |
@@ -156,6 +162,7 @@ node patches/patch.mjs js/popup.js patches/4-ui-defaults.json
 node patches/patch.mjs js/service_worker.js patches/5-ia-groq.json
 node patches/patch.mjs js/dashboard.js patches/6-respostas-rapidas-backup.json
 node patches/patch.mjs js/dashboard.js patches/7-conversas.json
+node patches/patch.mjs js/dashboard.js patches/8-conversas-tela-cheia.json
 ```
 
 `options.html`, `js/ia-options.js` e as entradas `options_ui` / `https://api.groq.com/*` do `manifest.json` não são patches: copie-os para o build novo.

@@ -156,7 +156,7 @@ body.embed .app { height: calc(100vh - 32px); margin: 16px 0; border-radius: var
 .trpop input[type=checkbox]:checked { background: var(--primary); }
 .trpop input[type=checkbox]:checked::after { transform: translateX(16px); }
 .trpop .hint { margin: 0; font-size: 11.5px; color: var(--muted-foreground); display: flex; gap: 6px; align-items: flex-start; }
-.trmeta { display: flex; align-items: center; gap: 4px; white-space: nowrap; margin-top: 4px; font-size: 11.5px; color: var(--wa-meta); }
+.trmeta { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-top: 4px; font-size: 11.5px; color: var(--wa-meta); }
 .trmeta.err { color: var(--destructive); }
 .link { border: 0; background: none; padding: 0; color: var(--primary); font-size: inherit; font-weight: 600; cursor: pointer; }
 .dark .link { color: var(--tick-read); }
@@ -202,3 +202,20 @@ body.embed .app { height: calc(100vh - 32px); margin: 16px 0; border-radius: var
 .rec .meter i { width: 3px; border-radius: 2px; background: var(--destructive); flex: none; }
 .rec small { width: 100%; color: var(--muted-foreground); font-size: 12px; }
 .aibadge { display: inline-flex; align-items: center; gap: 4px; margin-top: 5px; font-size: 10.5px; font-weight: 700; color: var(--wa-meta); border: 1px solid color-mix(in srgb, var(--wa-meta) 40%, transparent); border-radius: 999px; padding: 0 7px; }
+
+/* ---------- tela cheia (só o chat) ---------- */
+:fullscreen body, :fullscreen body.embed { background: var(--background); }
+:fullscreen body.embed .app { height: 100vh; margin: 0; border-radius: 0; box-shadow: none; border: 0; }
+:fullscreen .app { grid-template-columns: 380px minmax(0, 1fr) auto; }
+:fullscreen .msgs { padding-left: 12%; padding-right: 12%; }
+:fullscreen:root, html:fullscreen { background: var(--background); }
+
+/* cabeçalho da lista: título e botões na 1ª linha, status do WhatsApp na 2ª */
+.list { min-width: 0; overflow: hidden; }
+.list header { flex-wrap: wrap; row-gap: 4px; }
+.list header .status { order: 10; }
+.list header::after { content: ""; order: 9; flex-basis: 100%; }
+.trmeta .link { white-space: nowrap; }
+/* status de tradução/transcrição como texto corrido: quebra natural, ícone na linha */
+.trmeta { display: block; line-height: 1.5; }
+.trmeta svg { display: inline-block; vertical-align: -2px; margin-right: 3px; }

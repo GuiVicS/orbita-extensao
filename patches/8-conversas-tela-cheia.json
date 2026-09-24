@@ -1,0 +1,6 @@
+[
+  {
+    "before": "title:\"Conversas\",allow:\"microphone\"",
+    "after": "title:\"Conversas\",allow:\"microphone; fullscreen\",allowFullScreen:!0"
+  }
+]
