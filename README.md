@@ -4,6 +4,10 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.7.1
+
+- Respostas rápidas: a barra agora se adapta ao layout do WhatsApp Web (rodapé em fluxo, absoluto ou em grid) e fica sempre logo abaixo do campo de mensagem — antes podia aparecer embaixo do cabeçalho da conversa.
+
 ## Novidades da 1.7.0
 
 - **Respostas rápidas no WhatsApp Web**: barra logo abaixo do campo de mensagem com botões de respostas prontas, filtro por categoria, busca e prévia ao passar o mouse (botão direito também abre a prévia).

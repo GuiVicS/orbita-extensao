@@ -246,8 +246,7 @@ svg { display:block; flex:none; }
   // ---------------------------------------------------------------- hosts
   const barHost = document.createElement("div");
   barHost.id = "orbita-qr-bar";
-  barHost.style.cssText = "display:block;flex:none;position:relative;z-index:2;width:100%;";
-  const barShadow = barHost.attachShadow({ mode: "open" });
+    const barShadow = barHost.attachShadow({ mode: "open" });
   barShadow.innerHTML = `<style>${CSS}</style><div class="root"></div>`;
   const barRoot = barShadow.querySelector(".root");
 
@@ -890,17 +889,68 @@ svg { display:block; flex:none; }
   window.addEventListener("blur", () => barRoot.classList.remove("alt"));
 
   // ---------------------------------------------------------- montagem
+  // O layout do WhatsApp muda entre versões (rodapé em fluxo, absoluto, grid…).
+  // Tenta cada posição e confere pela geometria se a barra ficou logo abaixo do
+  // campo de mensagem e visível; se não, passa para a próxima.
+  const BAR_STYLE = "display:block;flex:none;position:relative;z-index:2;width:100%;box-sizing:border-box;";
+  const MODES = ["inside", "after", "float"];
+  let placed = { footer: null, mode: null };
+
+  function applyMode(footer, mode) {
+    footer.style.removeProperty("flex-wrap");
+    barHost.style.cssText = BAR_STYLE;
+    if (mode === "inside") {
+      const cs = getComputedStyle(footer);
+      if (cs.display.includes("flex") && !cs.flexDirection.startsWith("column")) {
+        footer.style.flexWrap = "wrap";
+        barHost.style.flexBasis = "100%";
+        barHost.style.order = "999";
+      } else if (cs.display.includes("grid")) barHost.style.gridColumn = "1 / -1";
+      footer.append(barHost);
+    } else if (mode === "after") footer.after(barHost);
+    else {
+      barHost.style.cssText = "display:block;position:fixed;z-index:1000;box-sizing:border-box;box-shadow:0 -4px 12px rgba(11,20,26,.08);";
+      document.body.append(barHost);
+      positionFloat(footer);
+    }
+  }
+
+  function positionFloat(footer) {
+    const r = footer.getBoundingClientRect();
+    barHost.style.left = `${r.left}px`;
+    barHost.style.width = `${r.width}px`;
+    barHost.style.bottom = `${Math.max(0, window.innerHeight - r.top)}px`;
+  }
+
+  function placementOk(footer) {
+    const b = barHost.getBoundingClientRect();
+    const c = (composer() || footer).getBoundingClientRect();
+    if (b.height < 12 || b.width < 100) return false;
+    if (b.top < c.bottom - 4 || b.bottom > window.innerHeight + 2) return false;
+    const hit = document.elementFromPoint(b.left + Math.min(60, b.width / 2), b.top + b.height / 2);
+    return hit === barHost || barHost.contains(hit);
+  }
+
   function mount() {
     if (!document.documentElement.contains(layerHost) && document.body) document.body.append(layerHost);
     const footer = document.querySelector("#main footer");
     if (!footer || !data || !settings().enabled) {
       if (barHost.isConnected && (!footer || !settings().enabled)) barHost.remove();
+      placed = { footer: null, mode: null };
       return;
     }
-    if (barHost.previousElementSibling !== footer) {
-      footer.after(barHost);
-      closePops();
-      renderBar();
+    if (placed.footer === footer && barHost.isConnected) {
+      if (placed.mode === "float") positionFloat(footer);
+      return;
+    }
+    closePops();
+    renderBar();
+    for (const mode of MODES) {
+      applyMode(footer, mode);
+      if (mode === "float" || placementOk(footer)) {
+        placed = { footer, mode };
+        break;
+      }
     }
   }
 
@@ -940,7 +990,11 @@ svg { display:block; flex:none; }
   new MutationObserver(syncTheme).observe(document.documentElement, { attributes: true, subtree: false });
   const bodyWatch = () => (document.body ? new MutationObserver(syncTheme).observe(document.body, { attributes: true, attributeFilter: ["class"] }) : setTimeout(bodyWatch, 300));
   bodyWatch();
-  window.addEventListener("resize", () => pop && pop.kind !== "slash" && closePops());
+  window.addEventListener("resize", () => {
+    if (pop && pop.kind !== "slash") closePops();
+    placed = { footer: null, mode: null };
+    mount();
+  });
 
   reload();
 })();
