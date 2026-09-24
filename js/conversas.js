@@ -496,6 +496,58 @@
   // o balão preserva quebras de linha (texto das mensagens): o HTML da mídia vai sem elas
   const tight = (html) => html.replace(/>\s+</g, "><").trim();
 
+  // ---- figurinhas: como no WhatsApp, a própria imagem (animada, se for), sem
+  // balão; baixadas sozinhas (são pequenas) e guardadas no cache de mídia
+  const stickers = { urls: new Map(), loading: new Set(), failed: new Set(), queue: [], active: 0 };
+
+  function stickerBlock(m) {
+    const url = stickers.urls.get(m.id);
+    const img = url
+      ? `<img src="${url}" alt="Figurinha" draggable="false">`
+      : m.media.thumb
+        ? `<img class="lo" src="data:image/jpeg;base64,${m.media.thumb}" alt="Figurinha" draggable="false">`
+        : `<span class="stkph" aria-label="Figurinha">${stickers.failed.has(m.id) ? icon("image", 26) : icon("spinner", 18, 'class="spin"')}</span>`;
+    return `<div class="stk" data-stk="${esc(m.id)}">${img}</div>`;
+  }
+
+  function loadStickers() {
+    for (const el of document.querySelectorAll("#msgs [data-stk]")) {
+      const id = el.dataset.stk;
+      if (stickers.urls.has(id) || stickers.loading.has(id) || stickers.failed.has(id)) continue;
+      stickers.loading.add(id);
+      stickers.queue.push(id);
+    }
+    while (stickers.active < 3 && stickers.queue.length) {
+      const id = stickers.queue.shift();
+      const chatId = S.current?.chatId;
+      stickers.active++;
+      (async () => {
+        try {
+          await call(C.OPS.MEDIA_FETCH, { messageId: id }); // já no cache: não baixa de novo
+          const media = await C.getMedia(id);
+          if (S.current?.chatId !== chatId) return;
+          stickers.urls.set(id, URL.createObjectURL(media.blob));
+        } catch {
+          stickers.failed.add(id);
+        } finally {
+          stickers.loading.delete(id);
+          stickers.active--;
+        }
+        const box = document.querySelector(`#msgs [data-stk="${CSS.escape(id)}"]`);
+        const m = S.messages.find((x) => x.id === id);
+        if (box && m) box.outerHTML = stickerBlock(m); // só a figurinha, sem redesenhar a conversa
+        loadStickers();
+      })();
+    }
+  }
+
+  function clearStickers() {
+    for (const u of stickers.urls.values()) URL.revokeObjectURL(u);
+    stickers.urls.clear();
+    stickers.failed.clear();
+    stickers.queue.length = 0;
+  }
+
   function mediaBlock(m) {
     return tight(mediaHtml(m));
   }
@@ -553,7 +605,7 @@
   }
 
   function openViewer(id) {
-    viewer.list = S.messages.filter((x) => x.media && !x.revoked);
+    viewer.list = S.messages.filter((x) => x.media && !x.revoked && x.media.kind !== "sticker");
     viewer.i = Math.max(0, viewer.list.findIndex((x) => x.id === id));
     viewer.open = true;
     renderViewer();
@@ -623,10 +675,12 @@
     if (m.revoked && m.fromMe) body = `${icon("ban", 14, 'style="display:inline;vertical-align:-2px"')} Você apagou esta mensagem`;
     else if (m.revoked) body = `${icon("ban", 14, 'style="display:inline;vertical-align:-2px"')} Mensagem apagada${m.text ? `<span class="cap" style="opacity:.7">“${esc(m.text)}”</span>` : ""}`;
     else if (m.type === "audio") body = audioBlock(m);
+    else if (m.type === "other" && m.media?.kind === "sticker") body = stickerBlock(m);
     else if (m.type === "other" && m.media) body = mediaBlock(m);
     else if (m.type === "other") body = `<span class="kind">${icon("clip", 14)} ${esc(m.label || "Mídia")}${m.filename ? `: ${esc(m.filename)}` : ""}</span>${m.text ? `<span class="cap">${textBlock(m)}</span>` : ""}`;
     else body = textBlock(m);
-    const cls = ["b", m.fromMe ? "me" : "", first ? "first" : "", m.revoked ? "revoked" : "", m._pending ? "pending" : "", m._new ? "new" : ""].filter(Boolean).join(" ");
+    const sticker = !m.revoked && m.type === "other" && m.media?.kind === "sticker";
+    const cls = ["b", m.fromMe ? "me" : "", first ? "first" : "", sticker ? "sticker" : "", m.revoked ? "revoked" : "", m._pending ? "pending" : "", m._new ? "new" : ""].filter(Boolean).join(" ");
     // menu do balão (apagar); não aparece em mensagens ainda sendo enviadas
     const menu = m._pending ? "" : `<button class="bmenu" data-menu="${esc(m.id)}" aria-label="Opções da mensagem" title="Opções">${icon("down", 16)}</button>`;
     return `${head}<div class="${cls}" data-id="${esc(m.id)}">${menu}${body}${meta}</div>`;
@@ -705,6 +759,7 @@
     const top = S.complete ? `<div class="older">Início da conversa</div>` : `<div class="older" id="sentinel">${S.loadingOlder ? `${icon("spinner", 14, 'class="spin"')} Carregando mensagens antigas…` : "Role para ver mensagens antigas"}</div>`;
     box.innerHTML = top + S.messages.map((m, i) => bubbleHtml(m, S.messages[i - 1])).join("");
     S.messages.forEach((m) => delete m._new);
+    loadStickers();
     if (toBottom) box.scrollTop = box.scrollHeight;
     else if (keepScroll) box.scrollTop = box.scrollHeight - fromBottom; // mantém a posição ao carregar antigas
     observeSentinel();
@@ -817,6 +872,7 @@
     closeQrPick();
     if (S.voice) cancelVoice();
     closeAttach();
+    clearStickers();
     S.voiceMode = false;
     S.messages = [];
     S.complete = false;

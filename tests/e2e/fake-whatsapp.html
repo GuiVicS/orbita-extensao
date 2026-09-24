@@ -37,6 +37,13 @@ store[J].push(
   media("doc1", "document", { filename: "Contrato.docx", mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", size: 2000 }, now - 2950),
   media("big1", "document", { filename: "Fotos.zip", mimetype: "application/zip", size: 9 * 1024 * 1024 }, now - 2900),
 );
+// figurinhas (só quando o teste pede): WEBP com fundo transparente, a do meio é minha
+if (window.__stickers) {
+  const stk = (color) => { const c = document.createElement("canvas"); c.width = c.height = 512; const g = c.getContext("2d"); g.fillStyle = color; g.beginPath(); g.arc(256, 256, 200, 0, 7); g.fill(); g.fillStyle = "#fff"; g.font = "bold 120px sans-serif"; g.fillText("OK", 150, 300); return c.toDataURL("image/webp"); };
+  window.__media[`false_${J}_stk1`] = b64Blob(stk("#f59e0b"), "image/webp");
+  window.__media[`true_${J}_stk2`] = b64Blob(stk("#22c55e"), "image/webp");
+  store[J].push(media("stk1", "sticker", { mimetype: "image/webp", size: 9000, width: 512, height: 512 }, now - 2800), { ...media("stk2", "sticker", { mimetype: "image/webp", size: 9000, width: 512, height: 512 }, now - 2790), id: { _serialized: `true_${J}_stk2`, fromMe: true, remote: J } });
+}
 if (window.__extra) store["5511999998888@c.us"].push(mk("5511999998888@c.us", 4, false, "Missed while offline", now + 5));
 const chats = {
   "5511999998888@c.us": { id: { _serialized: "5511999998888@c.us" }, contact: { name: "John Smith", pushname: "John" }, unreadCount: 2 },
