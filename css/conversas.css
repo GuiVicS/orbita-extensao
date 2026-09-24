@@ -325,3 +325,13 @@ body.expanded .msgs { padding-left: 10%; padding-right: 10%; }
 .qrs small { color: var(--muted-foreground); font-size: 12px; }
 .qrk { display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; font-weight: 600; color: var(--muted-foreground); }
 .app.off { grid-template-columns: 1fr; }
+
+/* ---------- menu do balão (apagar) ---------- */
+.b .bmenu { position: absolute; top: 3px; right: 3px; width: 24px; height: 22px; border: 0; border-radius: 6px; background: inherit; color: var(--wa-meta); display: grid; place-items: center; cursor: pointer; opacity: 0; transition: opacity .12s; z-index: 2; box-shadow: -6px 0 8px -2px var(--wa-in); }
+.b.me .bmenu { box-shadow: -6px 0 8px -2px var(--wa-out); }
+.b:hover .bmenu, .b .bmenu:focus-visible { opacity: 1; }
+.msgmenu { position: fixed; z-index: 96; width: 210px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg); padding: 5px; animation: rise .12s ease-out; }
+.msgmenu button { display: flex; align-items: center; gap: 9px; width: 100%; border: 0; background: none; padding: 9px 10px; border-radius: 8px; cursor: pointer; font-size: 13.5px; text-align: left; }
+.msgmenu button:hover:not(:disabled), .msgmenu button:focus-visible { background: var(--muted); }
+.msgmenu button:disabled { opacity: .45; cursor: not-allowed; }
+.btn.danger { background: var(--destructive); border-color: var(--destructive); color: #fff; }

@@ -41,6 +41,7 @@
     QR_PREPARE: "qr.prepare", // resposta rápida: traduz os passos para a prévia (tradução ligada)
     QR_RUN: "qr.run", // resposta rápida: envia a sequência
     QR_CANCEL: "qr.cancel",
+    DELETE_MESSAGE: "message.delete", // apagar para mim / para todos
   };
 
   // Módulo ligado/desligado em Opções → Módulos (padrão: ligado).
@@ -92,6 +93,7 @@
   const EVENTS = {
     MESSAGE_NEW: "message.new",
     MESSAGE_UPDATED: "message.updated",
+    MESSAGE_DELETED: "message.deleted", // apagada "para mim": some da conversa
     CHAT_UPDATED: "chat.updated",
     STATUS_CHANGED: "wa.status.changed",
     QR_PROGRESS: "qr.progress", // andamento do envio de uma resposta rápida
@@ -108,7 +110,13 @@
     PROFILE_PIC: "profilePic",
     MEDIA_CHUNK: "mediaChunk",
     QR: "qr", // repassa um comando ao envio de respostas rápidas (js/quick-replies-page.js)
+    DELETE_MESSAGE: "deleteMessage",
   };
+
+  // O WhatsApp só deixa "apagar para todos" as suas mensagens, até cerca de
+  // 2 dias e meio depois do envio (60 h).
+  const REVOKE_WINDOW_MS = 60 * 3600 * 1000;
+  const canRevoke = (m, now = Date.now()) => Boolean(m?.fromMe && !m.revoked && !String(m.id).startsWith("pending-") && now - (m.ts || 0) < REVOKE_WINDOW_MS);
 
   // ------------------------------------------------------------ telefones
   const digits = (s) => String(s || "").replace(/\D/g, "");
@@ -155,7 +163,7 @@
 
   function previewOf(msg) {
     if (!msg) return "";
-    if (msg.revoked) return "🚫 Mensagem apagada";
+    if (msg.revoked) return msg.fromMe ? "🚫 Você apagou esta mensagem" : "🚫 Mensagem apagada";
     if (msg.type === "audio") {
       const said = (msg.fromMe ? msg.textPt : msg.translationStatus === "done" && msg.translatedText) || msg.audio?.transcript;
       return `🎤 ${said ? `“${said}”` : `Áudio${msg.audio?.duration ? ` (${Math.floor(msg.audio.duration / 60)}:${String(Math.round(msg.audio.duration % 60)).padStart(2, "0")})` : ""}`}`;
@@ -324,6 +332,19 @@
     await txDone(tx2);
   }
 
+  async function getMessage(id) {
+    const db = await openDb();
+    return req(db.transaction("messages").objectStore("messages").get(id));
+  }
+
+  async function deleteMessageRecord(id) {
+    const db = await openDb();
+    const tx = db.transaction(["messages", "mediaCache"], "readwrite");
+    tx.objectStore("messages").delete(id);
+    tx.objectStore("mediaCache").delete(id); // arquivo baixado dessa mensagem, se houver
+    await txDone(tx);
+  }
+
   async function getMeta(key) {
     const db = await openDb();
     return (await req(db.transaction("meta").objectStore("meta").get(key)))?.value;
@@ -385,6 +406,7 @@
 
   globalThis.OrbitaChat = {
     CHANNEL, PORT_TAB, PORT_UI, OPS, EVENTS, TAB_CMDS,
+    REVOKE_WINDOW_MS, canRevoke, getMessage, deleteMessageRecord,
     moduleEnabled, SETTINGS_KEY, DEFAULT_SETTINGS, loadSettings, saveSettings, contactLangOf, sourceText, getMedia, putMedia, AI_VOICE_NOTICE,
     digits, phoneVariants, formatPhone, mergeMessage, previewOf,
     DB_NAME, openDb, getChat, listChats, updateChat, upsertMessages, patchMessage, messagesPage, countMessages, getMeta, setMeta,

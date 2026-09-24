@@ -66,6 +66,7 @@
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
     left: '<path d="m15 18-6-6 6-6"/>',
     right: '<path d="m9 18 6-6-6-6"/>',
+    trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
     pencil: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>',
     shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
   };
@@ -123,7 +124,7 @@
       c.avatarUrl ? `<img class="avimg" src="${esc(c.avatarUrl)}" alt="" referrerpolicy="no-referrer" loading="lazy" data-chat="${esc(c.chatId)}">` : ""
     }${stage ? `<i class="stage" style="background:${esc(stage.color)}" title="${esc(stage.name)}"></i>` : ""}</span>`;
   function tick(m) {
-    if (!m.fromMe) return "";
+    if (!m.fromMe || m.revoked) return ""; // como no WhatsApp: apagada não tem tique
     if (m._pending) return `<span class="tick">${icon("clock", 12)}</span>`;
     if (m.ack >= 3) return `<span class="tick read" aria-label="Lida">${icon("checks", 15)}</span>`;
     if (m.ack === 2) return `<span class="tick" aria-label="Entregue">${icon("checks", 15)}</span>`;
@@ -582,13 +583,82 @@
     const first = !prev || prev.fromMe !== m.fromMe || head;
     const meta = `<span class="meta">${m.edited ? "editada · " : ""}${esc(timeFmt.format(new Date(m.ts)))}${tick(m)}</span>`;
     let body;
-    if (m.revoked) body = `${icon("ban", 14, 'style="display:inline;vertical-align:-2px"')} Mensagem apagada${m.text ? `<span class="cap" style="opacity:.7">“${esc(m.text)}”</span>` : ""}`;
+    if (m.revoked && m.fromMe) body = `${icon("ban", 14, 'style="display:inline;vertical-align:-2px"')} Você apagou esta mensagem`;
+    else if (m.revoked) body = `${icon("ban", 14, 'style="display:inline;vertical-align:-2px"')} Mensagem apagada${m.text ? `<span class="cap" style="opacity:.7">“${esc(m.text)}”</span>` : ""}`;
     else if (m.type === "audio") body = audioBlock(m);
     else if (m.type === "other" && m.media) body = mediaBlock(m);
     else if (m.type === "other") body = `<span class="kind">${icon("clip", 14)} ${esc(m.label || "Mídia")}${m.filename ? `: ${esc(m.filename)}` : ""}</span>${m.text ? `<span class="cap">${textBlock(m)}</span>` : ""}`;
     else body = textBlock(m);
     const cls = ["b", m.fromMe ? "me" : "", first ? "first" : "", m.revoked ? "revoked" : "", m._pending ? "pending" : "", m._new ? "new" : ""].filter(Boolean).join(" ");
-    return `${head}<div class="${cls}" data-id="${esc(m.id)}">${body}${meta}</div>`;
+    // menu do balão (apagar); não aparece em mensagens ainda sendo enviadas
+    const menu = m._pending ? "" : `<button class="bmenu" data-menu="${esc(m.id)}" aria-label="Opções da mensagem" title="Opções">${icon("down", 16)}</button>`;
+    return `${head}<div class="${cls}" data-id="${esc(m.id)}">${menu}${body}${meta}</div>`;
+  }
+
+  // ---- apagar mensagem (para mim / para todos)
+  function openMsgMenu(btn) {
+    closeMsgMenu();
+    const m = S.messages.find((x) => x.id === btn.dataset.menu);
+    if (!m) return;
+    const revocable = C.canRevoke(m);
+    const why = !m.fromMe ? "Só dá para apagar para todos as mensagens que você enviou." : m.revoked ? "Já foi apagada para todos." : "Passou o prazo do WhatsApp (cerca de 2 dias e meio).";
+    const box = document.createElement("div");
+    box.className = "msgmenu";
+    box.setAttribute("role", "menu");
+    box.innerHTML = `<button role="menuitem" data-del="me">${icon("trash", 14)} Apagar para mim</button>
+      <button role="menuitem" data-del="all" ${revocable ? "" : `disabled title="${esc(why)}"`}>${icon("ban", 14)} Apagar para todos</button>`;
+    const r = btn.getBoundingClientRect();
+    box.style.top = `${Math.min(window.innerHeight - 110, r.bottom + 4)}px`;
+    box.style.left = `${Math.max(8, Math.min(window.innerWidth - 220, m.fromMe ? r.right - 210 : r.left))}px`;
+    document.body.append(box);
+    box.querySelector("button:not([disabled])")?.focus();
+    box.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-del]");
+      if (!b || b.disabled) return;
+      closeMsgMenu();
+      deleteMessage(m, b.dataset.del === "all");
+    });
+    setTimeout(() => document.addEventListener("mousedown", onMenuOutside, true), 0);
+  }
+  function onMenuOutside(e) {
+    if (!e.target.closest(".msgmenu")) closeMsgMenu();
+  }
+  function closeMsgMenu() {
+    document.querySelector(".msgmenu")?.remove();
+    document.removeEventListener("mousedown", onMenuOutside, true);
+  }
+
+  function confirmDialog(title, text, okLabel) {
+    return new Promise((resolve) => {
+      const wrap = document.createElement("div");
+      wrap.className = "modal";
+      wrap.innerHTML = `<div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="cdT"><h2 id="cdT">${esc(title)}</h2><p class="muted">${esc(text)}</p>
+        <div class="pvact"><button class="btn" data-a="no">Cancelar</button><button class="btn danger" data-a="yes">${esc(okLabel)}</button></div></div>`;
+      document.body.append(wrap);
+      wrap.querySelector('[data-a="no"]').focus();
+      const close = (ok) => (wrap.remove(), resolve(ok));
+      wrap.addEventListener("click", (e) => {
+        const a = e.target.closest("[data-a]")?.dataset.a;
+        if (a) close(a === "yes");
+        else if (e.target === wrap) close(false);
+      });
+      wrap.addEventListener("keydown", (e) => e.key === "Escape" && (e.stopPropagation(), close(false)));
+    });
+  }
+
+  async function deleteMessage(m, forEveryone) {
+    const ok = await confirmDialog(
+      forEveryone ? "Apagar para todos?" : "Apagar para mim?",
+      forEveryone ? `A mensagem será apagada para você e para ${displayName(S.current)}. No lugar dela aparece “mensagem apagada”.` : "A mensagem some só para você (aqui e no seu WhatsApp). A outra pessoa continua vendo.",
+      forEveryone ? "Apagar para todos" : "Apagar para mim",
+    );
+    if (!ok) return;
+    try {
+      await call(C.OPS.DELETE_MESSAGE, { chatId: m.chatId, messageId: m.id, forEveryone });
+      toast(forEveryone ? "Apagada para todos." : "Apagada para você.", "ok");
+    } catch (e) {
+      toast(`Não foi possível apagar: ${e.message}`, "err");
+    }
   }
 
   function renderMessages({ keepScroll = false, toBottom = false } = {}) {
@@ -782,6 +852,8 @@
         S.showOriginal.has(id) ? S.showOriginal.delete(id) : S.showOriginal.add(id);
         return renderMessages({ keepScroll: true });
       }
+      const menuBtn = e.target.closest("[data-menu]");
+      if (menuBtn) return openMsgMenu(menuBtn);
       const view = e.target.closest("[data-view]");
       if (view) return openViewer(view.dataset.view);
       const dl = e.target.closest("[data-dl]");
@@ -1484,6 +1556,12 @@
             if (data.chat.unreadCount) call(C.OPS.MARK_READ, { chatId: data.chat.chatId }).catch(() => {});
           }
           renderList();
+        }
+        return;
+      case C.EVENTS.MESSAGE_DELETED:
+        if (S.current?.chatId === data.chatId) {
+          S.messages = S.messages.filter((x) => x.id !== data.id);
+          renderMessages({ keepScroll: true });
         }
         return;
       case C.EVENTS.MESSAGE_NEW:

@@ -189,6 +189,15 @@
         if (code !== undefined && code !== "OK" && code !== WPP()?.whatsapp?.enums?.SendMsgResult?.OK) throw new Error(`O WhatsApp recusou a mensagem (${String(code)}).`);
         return msg || { id: ser(res?.id), chatId: cmd.chatId, fromMe: true, ts: Date.now(), type: "text", rawType: "chat", text: cmd.text, ack: 0, revoked: false };
       }
+      case "deleteMessage": {
+        // 4º argumento = revogar ("apagar para todos"); o WA-JS só revoga as suas
+        // mensagens: nas dos outros ele apaga só para você (conferido antes, no service worker)
+        const res = await chat.deleteMessage(cmd.chatId, cmd.id, false, Boolean(cmd.forEveryone));
+        const r = Array.isArray(res) ? res[0] : res;
+        const OK = WPP()?.whatsapp?.enums?.SendMsgResult?.OK ?? "OK";
+        if (r && r.sendMsgResult !== undefined && r.sendMsgResult !== OK && r.sendMsgResult !== "OK") throw new Error("O WhatsApp não conseguiu apagar a mensagem.");
+        return { revoked: Boolean(r?.isRevoked), deleted: Boolean(r?.isDeleted) };
+      }
       case "qr": {
         // O envio das respostas rápidas já existe em js/quick-replies-page.js
         // (mesma página); aqui só repassamos, com o arquivo remontado como Blob.

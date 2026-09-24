@@ -38,5 +38,15 @@ test("prévia por tipo", () => {
   assert.equal(C.previewOf({ type: "audio", audio: { transcript: "Hi" } }), "🎤 “Hi”");
   assert.equal(C.previewOf({ type: "audio", fromMe: true, textPt: "Oi", audio: { transcript: "Hi", generated: true } }), "🎤 “Oi”");
   assert.equal(C.previewOf({ revoked: true }), "🚫 Mensagem apagada");
+  assert.equal(C.previewOf({ revoked: true, fromMe: true }), "🚫 Você apagou esta mensagem");
   assert.equal(C.previewOf({ type: "other", label: "Foto" }), "📎 Foto");
+});
+
+test("apagar para todos: só as suas e dentro de 60 h", () => {
+  const now = Date.now();
+  assert.equal(C.canRevoke({ id: "a", fromMe: true, ts: now - 3600e3 }, now), true);
+  assert.equal(C.canRevoke({ id: "a", fromMe: false, ts: now }, now), false);
+  assert.equal(C.canRevoke({ id: "a", fromMe: true, ts: now - 61 * 3600e3 }, now), false);
+  assert.equal(C.canRevoke({ id: "a", fromMe: true, revoked: true, ts: now }, now), false);
+  assert.equal(C.canRevoke({ id: "pending-1", fromMe: true, ts: now }, now), false);
 });

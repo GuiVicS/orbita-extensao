@@ -644,6 +644,33 @@
         return { key: media.key, mime: media.mime, size: media.size };
       }
 
+      case C.OPS.DELETE_MESSAGE: {
+        const chatId = String(req.chatId);
+        const m = await C.getMessage(String(req.messageId));
+        if (!m || m.chatId !== chatId) throw new Error("Mensagem não encontrada.");
+        const forEveryone = Boolean(req.forEveryone);
+        if (forEveryone && !m.fromMe) throw new Error("Só dá para apagar para todos as mensagens que você enviou.");
+        if (forEveryone && !C.canRevoke(m)) throw new Error("O prazo do WhatsApp para apagar para todos (cerca de 2 dias e meio) já passou.");
+        const r = await exec({ op: C.TAB_CMDS.DELETE_MESSAGE, chatId, id: m.id, forEveryone }, 30000);
+        if (forEveryone) {
+          if (!r.revoked) throw new Error("O WhatsApp não confirmou que a mensagem foi apagada para todos.");
+          const msg = await C.patchMessage(m.id, (x) => ({ ...x, revoked: true, revokedByMe: true }));
+          broadcast(C.EVENTS.MESSAGE_UPDATED, { message: msg });
+          const chat = await touchChat({ chatId }, { lastMsg: msg });
+          broadcast(C.EVENTS.CHAT_UPDATED, { chat });
+          return { revoked: true };
+        }
+        await C.deleteMessageRecord(m.id);
+        broadcast(C.EVENTS.MESSAGE_DELETED, { chatId, id: m.id });
+        // se era a última, a prévia da lista passa a ser a anterior
+        const [prev] = (await C.messagesPage(chatId, { limit: 1 })).slice(-1);
+        const chat = await C.updateChat(chatId, (c) =>
+          c && c.lastMessageId === m.id ? { ...c, lastMessageId: prev?.id, lastMessageAt: prev?.ts || c.lastMessageAt, lastPreview: prev ? C.previewOf(prev) : "", lastFromMe: prev?.fromMe } : null,
+        );
+        if (chat) broadcast(C.EVENTS.CHAT_UPDATED, { chat });
+        return { deleted: true };
+      }
+
       case C.OPS.QR_PREPARE: {
         const prep = await prepareQuickReply(String(req.chatId), String(req.itemId));
         if (!prep.translated) return { translated: false };
