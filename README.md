@@ -6,6 +6,7 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 ## Novidades da 1.12.0
 
+- **Corrigido: “Operação desconhecida” (apagar mensagem, enviar anexo…)** depois de uma atualização. O atualizador troca os arquivos, mas o Chrome podia continuar rodando a parte de segundo plano da versão antiga. Agora a Órbita confere isso ao iniciar e se recarrega sozinha, reabrindo as telas que estavam abertas; e, se as Conversas encontrarem a versão antiga, mostram o aviso **Recarregue a Órbita** com um botão.
 - **Conversas: corretor automático (opcional, desligado por padrão).** Ligue pelo botão com o **A e o ✓**, ao lado do campo de mensagem, ou em **Opções → Conversas**. Ao enviar, a IA configurada corrige ortografia, acentos, pontuação e gramática, sem reescrever nem mudar o tom, e mostra uma prévia com as palavras alteradas destacadas. **Enter** envia o corrigido; também dá para **Enviar original** ou **Editar**. Sem nada a corrigir, envia direto. Se a IA falhar, nada é enviado sem você escolher. Links, números, preços e {{variáveis}} são conferidos: se mudarem, a correção é descartada. Não é usado com a tradução ligada. Opção de corrigir e enviar direto, sem prévia.
 
 ## Novidades da 1.11.0
@@ -98,7 +99,7 @@ aba do WhatsApp (js/chat-page.js, WA-JS) ⇄ js/chat-content.js ⇄ porta "orbit
 ```sh
 node --test tests/*.test.mjs            # unitários (motor de tradução, transcrição, voz, utilidades)
 npm i -D playwright && npx playwright install chromium
-node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect
+node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect, stale-worker
 ```
 
 Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web simulado (`tests/e2e/fake-whatsapp.html`) e provedores de IA/voz simulados — nenhuma chave real é usada.

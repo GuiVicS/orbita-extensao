@@ -597,7 +597,8 @@
     if (req.op !== C.OPS.STATUS && !(await C.moduleEnabled())) throw new Error("As Conversas estão desligadas em Opções → Módulos.");
     switch (req.op) {
       case C.OPS.STATUS:
-        return status;
+        // ops: o painel confere se este service worker conhece tudo o que ele pede
+        return { ...status, ops: Object.values(C.OPS) };
 
       case C.OPS.LIST:
         await accountReady;

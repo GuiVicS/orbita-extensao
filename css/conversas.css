@@ -178,6 +178,8 @@ body.embed .app { height: calc(100vh - 32px); margin: 16px 0; border-radius: var
 .dialog h2 { margin: 12px 0 8px; font-size: 18px; }
 .dialog ul { margin: 0 0 18px; padding-left: 18px; display: grid; gap: 8px; font-size: 13.5px; color: var(--muted-foreground); }
 .dialog ul b { color: var(--foreground); }
+.dialog > p { margin: 0 0 10px; font-size: 13.5px; line-height: 1.5; }
+.dialog > p.muted { color: var(--muted-foreground); margin-bottom: 18px; }
 
 /* ---------- áudio ---------- */
 .player { display: flex; align-items: center; gap: 10px; min-width: 240px; padding: 2px 0; }

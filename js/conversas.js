@@ -175,8 +175,41 @@
   async function call(op, extra = {}) {
     const r = await chrome.runtime.sendMessage({ channel: C.CHANNEL, op, ...extra });
     if (!r) throw new Error("A extensão não respondeu. Recarregue a página.");
+    if (!r.ok && /^Operação desconhecida/.test(r.error || "")) {
+      staleWorker();
+      throw new Error("A Órbita foi atualizada e precisa ser recarregada para isso funcionar.");
+    }
     if (!r.ok) throw new Error(r.error);
     return r.data;
+  }
+
+  // Arquivos da extensão trocados (atualização) sem o Chrome recarregá-la: esta
+  // página já é a nova, mas o service worker continua com o código antigo na
+  // memória. Oferece recarregar a extensão e reabre esta tela depois.
+  let staleShown = false;
+  function staleWorker() {
+    if (staleShown) return;
+    staleShown = true;
+    const wrap = document.createElement("div");
+    wrap.className = "modal";
+    wrap.innerHTML = `<div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="stTitle">
+      <div class="dz">${icon("refresh", 22)}</div><h2 id="stTitle">Recarregue a Órbita</h2>
+      <p>A extensão foi atualizada, mas o Chrome ainda está usando a versão anterior em segundo plano. Por isso algumas funções (como enviar anexos) dão erro.</p>
+      <p class="muted">Leva um segundo: as telas da Órbita fecham e esta conversa abre de novo sozinha.</p>
+      <div class="pvact"><button class="btn" data-a="no">Agora não</button><button class="btn primary" data-a="yes">Recarregar agora</button></div></div>`;
+    document.body.append(wrap);
+    wrap.querySelector('[data-a="yes"]').focus();
+    wrap.addEventListener("click", async (e) => {
+      const a = e.target.closest("[data-a]")?.dataset.a;
+      if (!a) return;
+      if (a === "no") return wrap.remove(), (staleShown = false);
+      let url = location.href;
+      try {
+        if (EMBED) url = parent.location.href; // painel com as Conversas dentro
+      } catch {}
+      await chrome.storage.local.set({ "orbita:reopen": { urls: [url], at: Date.now() } });
+      chrome.runtime.reload();
+    });
   }
 
   // etapas do funil (cor e nome) direto do banco do CRM, só leitura
@@ -1998,6 +2031,7 @@
     await loadStages().catch(() => {});
     try {
       S.status = await call(C.OPS.STATUS);
+      if (!Object.values(C.OPS).every((op) => S.status.ops?.includes(op))) staleWorker();
     } catch {}
     renderStatus();
     await loadChats().catch((e) => toast(e.message, "err"));
