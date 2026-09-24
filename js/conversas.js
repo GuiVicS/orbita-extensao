@@ -66,6 +66,7 @@
     plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
     smile: '<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/>',
     sticker: '<path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"/><path d="M14 3v4a2 2 0 0 0 2 2h4"/><path d="M8 13h.01"/><path d="M16 13h.01"/><path d="M10 16s.8 1 2 1c1.3 0 2-1 2-1"/>',
+    users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
     star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
     spellcheck: '<path d="m6 16 6-12 6 12"/><path d="M8 12h8"/><path d="m16 20 2 2 4-4"/>',
     file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
@@ -126,7 +127,7 @@
   // Foto de perfil do WhatsApp quando existir; senão, as iniciais coloridas.
   // Os links de foto do WhatsApp expiram: se a imagem falhar, pede um novo.
   const avatar = (c, stage) =>
-    `<span class="av" style="background:${avatarColor(c.chatId)}">${esc(initials(displayName(c)))}${
+    `<span class="av ${c.isGroup ? "grp" : ""}" style="background:${avatarColor(c.chatId)}">${c.isGroup ? icon("users", 18) : esc(initials(displayName(c)))}${
       c.avatarUrl ? `<img class="avimg" src="${esc(c.avatarUrl)}" alt="" referrerpolicy="no-referrer" loading="lazy" data-chat="${esc(c.chatId)}">` : ""
     }${stage ? `<i class="stage" style="background:${esc(stage.color)}" title="${esc(stage.name)}"></i>` : ""}</span>`;
   function tick(m) {
@@ -242,7 +243,7 @@
         <button class="ibtn" id="fullBtn" aria-label="Tela cheia" title="Tela cheia (Esc para sair)">${icon("maximize", 17)}</button></header>
       <div class="search">${icon("search", 15)}<input id="q" type="search" placeholder="Buscar nome ou número" aria-label="Buscar conversas"></div>
       <div class="filters" role="tablist" aria-label="Filtrar">
-        <button data-filter="all" class="on" role="tab">Todas</button><button data-filter="unread" role="tab">Não lidas</button><button data-filter="crm" role="tab">Clientes do CRM</button></div>
+        <button data-filter="all" class="on" role="tab">Todas</button><button data-filter="unread" role="tab">Não lidas</button><button data-filter="crm" role="tab">Clientes do CRM</button><button data-filter="groups" role="tab">Grupos</button></div>
       <div class="items" id="items" role="listbox" aria-label="Lista de conversas"></div>
     </section>
     <section class="thread" id="thread" aria-label="Conversa aberta"></section>
@@ -256,6 +257,7 @@
     return S.chats.filter((c) => {
       if (S.filter === "unread" && !c.unreadCount) return false;
       if (S.filter === "crm" && !c.client) return false;
+      if (S.filter === "groups" && !c.isGroup) return false;
       if (!q) return true;
       return displayName(c).toLowerCase().includes(q) || (qd && (c.phone || "").includes(qd));
     });
@@ -309,9 +311,10 @@
     const items = $("#items");
     const list = filteredChats();
     requestAvatars(list);
-    items.innerHTML = list.length
+    const bar = S.filter === "groups" ? `<div class="grpbar"><button class="btn" id="grpImport">${icon("users", 15)} Criar listas dos grupos</button></div>` : "";
+    items.innerHTML = bar + (list.length
       ? list.map(itemHtml).join("")
-      : `<div class="empty">${S.chats.length ? "Nenhuma conversa com esse filtro." : S.status.ready ? "Nenhuma conversa ainda." : "As conversas aparecem aqui quando o WhatsApp Web estiver aberto numa aba."}</div>`;
+      : `<div class="empty">${S.chats.length ? "Nenhuma conversa com esse filtro." : S.status.ready ? "Nenhuma conversa ainda." : "As conversas aparecem aqui quando o WhatsApp Web estiver aberto numa aba."}</div>`);
   }
 
   async function loadChats() {
@@ -321,6 +324,7 @@
   }
 
   $("#items").addEventListener("click", (e) => {
+    if (e.target.closest("#grpImport")) return importGroupsDialog();
     const b = e.target.closest("[data-chat]");
     if (b) openChat(b.dataset.chat);
   });
@@ -673,7 +677,9 @@
   function bubbleHtml(m, prev) {
     let head = "";
     if (!prev || dayKey(prev.ts) !== dayKey(m.ts)) head += `<div class="day">${esc(dayLabel(m.ts))}</div>`;
-    const first = !prev || prev.fromMe !== m.fromMe || head;
+    const first = !prev || prev.fromMe !== m.fromMe || head || (m.author && prev.author !== m.author);
+    // grupo: nome de quem mandou no primeiro balão da sequência (como no WhatsApp)
+    const who = m.author && !m.fromMe && first ? `<span class="who" style="color:${avatarColor(m.author)}">${esc(m.authorName || C.formatPhone(m.authorPhone) || "Participante")}${m.authorName && m.authorPhone ? `<small>${esc(C.formatPhone(m.authorPhone))}</small>` : ""}</span>` : "";
     const meta = `<span class="meta">${m.edited ? "editada · " : ""}${esc(timeFmt.format(new Date(m.ts)))}${tick(m)}</span>`;
     let body;
     if (m.revoked && m.fromMe) body = `${icon("ban", 14, 'style="display:inline;vertical-align:-2px"')} Você apagou esta mensagem`;
@@ -688,7 +694,7 @@
     const cls = ["b", m.fromMe ? "me" : "", first ? "first" : "", sticker ? "sticker" : "", jumbo ? `jumbo j${jumbo}` : "", m.revoked ? "revoked" : "", m._pending ? "pending" : "", m._new ? "new" : ""].filter(Boolean).join(" ");
     // menu do balão (apagar); não aparece em mensagens ainda sendo enviadas
     const menu = m._pending ? "" : `<button class="bmenu" data-menu="${esc(m.id)}" aria-label="Opções da mensagem" title="Opções">${icon("down", 16)}</button>`;
-    return `${head}<div class="${cls}" data-id="${esc(m.id)}">${menu}${body}${meta}</div>`;
+    return `${head}<div class="${cls}" data-id="${esc(m.id)}">${menu}${who}${body}${meta}</div>`;
   }
 
   // ---- apagar mensagem (para mim / para todos)
@@ -861,9 +867,9 @@
     const h = $("#thead");
     if (!c || !h) return;
     h.innerHTML = `${avatar(c, stageOf(c))}<div class="who"><b>${esc(displayName(c))}</b>
-      <small>${esc(C.formatPhone(c.phone) || "Número oculto pelo WhatsApp")}${c.client ? `<span class="chip crm">Cliente do CRM</span>` : `<span class="chip">Fora do CRM</span>`}</small></div>
+      <small>${c.isGroup ? `${c.participantsCount ? `${c.participantsCount} participantes` : "Grupo"}<span class="chip grp">Grupo</span>` : `${esc(C.formatPhone(c.phone) || "Número oculto pelo WhatsApp")}${c.client ? `<span class="chip crm">Cliente do CRM</span>` : `<span class="chip">Fora do CRM</span>`}`}</small></div>
       ${trButton(c)}
-      <button class="ibtn ${S.sideOpen ? "on" : ""}" id="sideBtn" aria-label="${S.sideOpen ? "Esconder" : "Mostrar"} dados do cliente" aria-pressed="${S.sideOpen}" title="Dados do cliente">${icon("panel", 18)}</button>`;
+      <button class="ibtn ${S.sideOpen ? "on" : ""}" id="sideBtn" aria-label="${S.sideOpen ? "Esconder" : "Mostrar"} ${c.isGroup ? "dados do grupo" : "dados do cliente"}" aria-pressed="${S.sideOpen}" title="${c.isGroup ? "Dados do grupo" : "Dados do cliente"}">${icon("panel", 18)}</button>`;
   }
 
   async function openChat(chatId) {
@@ -1727,6 +1733,7 @@
       return;
     }
     box.hidden = false;
+    if (c.isGroup) return renderGroupSide(box, c);
     const phone = c.client?.phone || c.phone || null;
     let d = null;
     let err = null;
@@ -1773,6 +1780,161 @@
       ${d?.lists?.length ? `<small style="display:block">Listas: ${esc(d.lists.join(", "))}</small>` : ""}</div>${body}`;
     if ($("#leadForm")) globalThis.OrbitaLead?.mount($("#leadForm"), phone, { identity: false }); // nome e número já estão no topo
     if (side.editingName) $("#crmName")?.focus();
+  }
+
+  // ---- grupos: participantes (nome, número, admin) e lista de contatos
+  const gside = { chatId: null, info: null, list: null, error: "", q: "" };
+
+  async function renderGroupSide(box, c, { refresh = false } = {}) {
+    if (gside.chatId !== c.chatId || refresh) {
+      Object.assign(gside, { chatId: c.chatId, info: null, list: null, error: "", q: "" });
+      paintGroupSide(box, c);
+      try {
+        const [info, list] = await Promise.all([call(C.OPS.GROUP_INFO, { chatId: c.chatId }), globalThis.OrbitaGroupLists.listFor(c.chatId).catch(() => null)]);
+        if (gside.chatId !== c.chatId) return;
+        Object.assign(gside, { info, list });
+      } catch (e) {
+        if (gside.chatId !== c.chatId) return;
+        gside.error = e.message;
+      }
+    }
+    if (S.current?.chatId === c.chatId) paintGroupSide(box, c);
+  }
+
+  function paintGroupSide(box, c) {
+    const g = gside.info;
+    const top = `<div class="top">${avatar(c)}<b>${esc(g?.subject || displayName(c))}</b><small>Grupo${g ? ` · ${g.participants.length} participantes` : ""}</small>
+      ${g?.createdAt ? `<small style="display:block">Criado em ${esc(new Date(g.createdAt).toLocaleDateString("pt-BR"))}</small>` : ""}</div>`;
+    if (!g) {
+      box.innerHTML = top + (gside.error ? `<div class="sec"><span class="muted">${esc(gside.error)}</span><button class="btn" data-grp="reload">${icon("refresh", 14)} Tentar de novo</button></div>` : `<div class="sec"><span class="muted">${icon("spinner", 14, 'class="spin"')} Carregando participantes…</span></div>`);
+      return;
+    }
+    const { contacts, hidden } = globalThis.OrbitaGroupLists.contactsOf(g);
+    const L = gside.list;
+    const listCard = L
+      ? `<div class="sec card"><h3>Lista de contatos</h3><span><b>${esc(L.name)}</b> · ${L.count} contatos</span>
+          <div class="row"><button class="btn primary" data-grp="save">${icon("refresh", 14)} Atualizar lista</button><button class="btn" data-grp="openlist">${icon("external", 14)} Abrir</button></div>
+          <small class="muted">Atualizar acrescenta quem entrou no grupo depois.</small></div>`
+      : `<div class="sec card"><h3>Lista de contatos</h3><span class="muted">Crie uma lista separada com os participantes para usar em campanhas e no CRM.</span>
+          <input class="in" id="grpListName" value="${esc(globalThis.OrbitaGroupLists.defaultName(g))}" aria-label="Nome da lista">
+          <button class="btn primary" data-grp="save" ${contacts.length ? "" : "disabled"}>${icon("users", 14)} Criar lista (${contacts.length} ${contacts.length === 1 ? "contato" : "contatos"})</button>
+          ${hidden ? `<small class="muted">${hidden} ${hidden === 1 ? "participante está" : "participantes estão"} com o número oculto pelo WhatsApp e ${hidden === 1 ? "fica" : "ficam"} de fora.</small>` : ""}</div>`;
+    const q = gside.q.trim().toLowerCase();
+    const qd = C.digits(q);
+    const rank = (p) => (p.isMe ? 0 : p.isSuperAdmin ? 1 : p.isAdmin ? 2 : 3);
+    const people = [...g.participants]
+      .filter((p) => !q || (p.name || p.pushname || "").toLowerCase().includes(q) || (qd && (p.phone || "").includes(qd)))
+      .sort((a, b) => rank(a) - rank(b) || (a.name || a.pushname || "~").localeCompare(b.name || b.pushname || "~", "pt-BR"));
+    const row = (p) => {
+      const nm = p.isMe ? "Você" : p.name || (p.pushname ? `~${p.pushname}` : "") || C.formatPhone(p.phone) || "Participante";
+      const chat = p.phone && S.chats.find((x) => !x.isGroup && x.phone && C.phoneVariants(p.phone).includes(x.phone));
+      return `<button class="gp ${chat ? "link" : ""}" ${chat ? `data-grp="open" data-chat="${esc(chat.chatId)}" title="Abrir conversa"` : "tabindex=\"-1\""}>
+        <span class="av sm" style="background:${avatarColor(p.id)}">${esc(initials(nm.replace(/^~/, "")))}</span>
+        <span class="gpm"><b>${esc(nm)}</b><small>${p.phone ? esc(C.formatPhone(p.phone)) : "Número oculto"}</small></span>
+        ${p.isSuperAdmin || p.isAdmin ? `<span class="chip">${p.isSuperAdmin ? "Criador" : "Admin"}</span>` : ""}</button>`;
+    };
+    box.innerHTML = `${top}
+      ${g.desc ? `<details class="sec gdesc"><summary>Descrição</summary><div>${waFormat(g.desc)}</div></details>` : ""}
+      ${listCard}
+      <div class="sec"><h3>Participantes (${g.participants.length}) <button class="link" data-grp="reload" title="Atualizar">${icon("refresh", 12)}</button></h3>
+        ${g.participants.length > 8 ? `<input class="in" id="grpQ" placeholder="Buscar participante" value="${esc(gside.q)}" aria-label="Buscar participante">` : ""}
+        <div class="gplist">${people.map(row).join("") || `<span class="muted">Ninguém encontrado.</span>`}</div></div>`;
+  }
+
+  async function saveGroupList() {
+    const g = gside.info;
+    if (!g) return;
+    try {
+      const r = await globalThis.OrbitaGroupLists.save(g, { name: $("#grpListName")?.value });
+      gside.list = await globalThis.OrbitaGroupLists.listFor(g.chatId);
+      toast(r.created ? `Lista “${r.name}” criada com ${r.total} contatos.` : r.added ? `${r.added} ${r.added === 1 ? "contato novo" : "contatos novos"} na lista “${r.name}”.` : "A lista já estava em dia.", "ok");
+    } catch (e) {
+      toast(e.message, "err");
+    }
+    if (S.current?.chatId === g.chatId) paintGroupSide($("#side"), S.current);
+  }
+
+  function openContacts(listId) {
+    const url = `#/contatos${listId ? `/${encodeURIComponent(listId)}` : ""}`;
+    if (EMBED) {
+      if (expanded) setExpanded(false);
+      parent.location.hash = url;
+    } else location.href = `dashboard.html${url}`;
+  }
+
+  $("#side").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-grp]");
+    if (!b || !S.current?.isGroup) return;
+    if (b.dataset.grp === "save") return saveGroupList();
+    if (b.dataset.grp === "reload") return renderGroupSide($("#side"), S.current, { refresh: true });
+    if (b.dataset.grp === "openlist") return openContacts(gside.list?.id);
+    if (b.dataset.grp === "open") return openChat(b.dataset.chat);
+  });
+  $("#side").addEventListener("input", (e) => {
+    if (e.target.id !== "grpQ" || !S.current?.isGroup) return;
+    gside.q = e.target.value;
+    const pos = e.target.selectionStart;
+    paintGroupSide($("#side"), S.current);
+    const inp = $("#grpQ");
+    inp?.focus();
+    inp?.setSelectionRange(pos, pos);
+  });
+
+  // Vários grupos de uma vez: escolhe quais e cria (ou atualiza) uma lista para cada.
+  async function importGroupsDialog() {
+    const wrap = document.createElement("div");
+    wrap.className = "modal";
+    wrap.innerHTML = `<div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="giT"><h2 id="giT">Listas de contatos dos grupos</h2>
+      <p class="muted">Cada grupo escolhido vira uma lista separada (“Grupo: nome”). Se a lista já existir, entram só os participantes novos. Números ocultos pelo WhatsApp e o seu ficam de fora.</p>
+      <div class="gilist">${icon("spinner", 14, 'class="spin"')} Carregando grupos…</div>
+      <div class="pvact"><label class="gisel"><input type="checkbox" id="giAll"> Marcar todos</label><span class="giprog muted"></span><button class="btn" data-a="no">Fechar</button><button class="btn primary" data-a="go" disabled>Criar listas</button></div></div>`;
+    document.body.append(wrap);
+    const close = () => wrap.remove();
+    wrap.addEventListener("keydown", (e) => e.key === "Escape" && (e.stopPropagation(), close()));
+    wrap.addEventListener("click", (e) => e.target === wrap && close());
+    let groups = [];
+    try {
+      groups = await call(C.OPS.GROUP_LIST);
+    } catch (e) {
+      wrap.querySelector(".gilist").innerHTML = `<span class="err">${esc(e.message)}</span>`;
+    }
+    const box = wrap.querySelector(".gilist");
+    if (groups.length) box.innerHTML = groups.map((g) => `<label class="girow"><input type="checkbox" value="${esc(g.chatId)}"><span class="av sm grp" style="background:${avatarColor(g.chatId)}">${icon("users", 14)}</span><b>${esc(g.name || "Grupo sem nome")}</b><small class="muted">${g.participantsCount ? `${g.participantsCount} participantes` : ""}</small></label>`).join("");
+    else if (!box.querySelector(".err")) box.innerHTML = `<span class="muted">Nenhum grupo encontrado nesta conta.</span>`;
+    const go = wrap.querySelector('[data-a="go"]');
+    const checked = () => [...box.querySelectorAll("input:checked")].map((i) => i.value);
+    const upd = () => {
+      const n = checked().length;
+      go.disabled = !n;
+      go.textContent = n ? `Criar ${n} ${n === 1 ? "lista" : "listas"}` : "Criar listas";
+    };
+    box.addEventListener("change", upd);
+    wrap.querySelector("#giAll").addEventListener("change", (e) => {
+      box.querySelectorAll("input").forEach((i) => (i.checked = e.target.checked));
+      upd();
+    });
+    wrap.querySelector('[data-a="no"]').onclick = close;
+    go.onclick = async () => {
+      const ids = checked();
+      const prog = wrap.querySelector(".giprog");
+      go.disabled = true;
+      box.querySelectorAll("input").forEach((i) => (i.disabled = true));
+      let made = 0;
+      let people = 0;
+      const fails = [];
+      for (const [i, id] of ids.entries()) {
+        prog.textContent = `${i + 1} de ${ids.length}…`;
+        try {
+          const r = await globalThis.OrbitaGroupLists.save(await call(C.OPS.GROUP_INFO, { chatId: id }));
+          made++;
+          people += r.added;
+        } catch (e) {
+          fails.push(`${groups.find((g) => g.chatId === id)?.name || id}: ${e.message}`);
+        }
+      }
+      close();
+      toast(`${made} ${made === 1 ? "lista pronta" : "listas prontas"} · ${people} ${people === 1 ? "contato novo" : "contatos novos"}.${fails.length ? ` Falharam: ${fails.join("; ")}` : ""}`, fails.length ? "err" : "ok");
+    };
   }
 
   // Executa uma edição do CRM e atualiza o chat (vínculo, cor da etapa) e o painel.

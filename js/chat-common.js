@@ -44,6 +44,8 @@
     DELETE_MESSAGE: "message.delete", // apagar para mim / para todos
     SEND_FILE: "chat.sendFile", // anexo colado, arrastado ou escolhido (foto, vídeo, documento…)
     CORRECT: "text.correct", // corretor: ortografia e gramática do texto antes de enviar
+    GROUP_LIST: "group.list", // todos os grupos da conta
+    GROUP_INFO: "group.info", // participantes (nome, número, admin) de um grupo
   };
 
   // Módulo ligado/desligado em Opções → Módulos (padrão: ligado).
@@ -117,6 +119,8 @@
     DELETE_MESSAGE: "deleteMessage",
     UPLOAD_CHUNK: "uploadChunk", // pedaço de um anexo (a porta tem limite de tamanho)
     SEND_FILE: "sendFile", // envia o anexo remontado com os pedaços
+    LIST_GROUPS: "listGroups",
+    GROUP_INFO: "groupInfo",
   };
 
   // O WhatsApp só deixa "apagar para todos" as suas mensagens, até cerca de
@@ -200,7 +204,14 @@
   // Texto que representa a mensagem para tradução: a transcrição, nos áudios.
   const sourceText = (m) => (m?.type === "audio" ? m.audio?.transcript || "" : m?.text || "");
 
+  // Grupo: "Fulano: …" antes da prévia das mensagens dos outros.
   function previewOf(msg) {
+    const p = previewBody(msg);
+    if (!msg?.author || msg.fromMe || msg.revoked || !p) return p;
+    const who = (msg.authorName || "").split(/\s+/)[0] || formatPhone(msg.authorPhone) || "Alguém";
+    return `${who}: ${p}`;
+  }
+  function previewBody(msg) {
     if (!msg) return "";
     if (msg.revoked) return msg.fromMe ? "🚫 Você apagou esta mensagem" : "🚫 Mensagem apagada";
     if (msg.type === "audio") {

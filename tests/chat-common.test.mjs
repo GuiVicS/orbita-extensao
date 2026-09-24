@@ -76,3 +76,9 @@ test("emojiOnly: até 3 emojis (com tom, bandeira, ZWJ) e nada mais", () => {
   assert.equal(C.emojiOnly("1"), 0);
   assert.equal(C.emojiOnly(""), 0);
 });
+
+test("previewOf: em grupo, o nome de quem mandou antes da prévia", () => {
+  assert.equal(C.previewOf({ text: "Oi", author: "1@c.us", authorName: "Maria Souza" }), "Maria: Oi");
+  assert.equal(C.previewOf({ text: "Oi", author: "1@c.us", authorPhone: "5511977776666" }), "+55 (11) 97777-6666: Oi");
+  assert.equal(C.previewOf({ text: "Oi", fromMe: true }), "Oi");
+});

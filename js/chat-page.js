@@ -23,7 +23,25 @@
   };
   const ser = (id) => id?._serialized || (typeof id === "string" ? id : id ? String(id) : "");
   const PHONE = /^(\d{8,15})@c\.us$/;
-  const USER_CHAT = /@(c\.us|lid)$/; // só conversas 1:1 (grupos ficam de fora)
+  const USER_CHAT = /@(c\.us|lid)$/; // conversas 1:1
+  const CHAT = /@(c\.us|lid|g\.us)$/; // 1:1 e grupos (canais, status e listas de transmissão ficam de fora)
+  const isGroup = (chatId) => /@g\.us$/.test(chatId);
+
+  // Nome de um contato como o WhatsApp mostra (salvo > nome do perfil).
+  function contactName(contact) {
+    for (const k of ["name", "formattedName", "verifiedName", "pushname", "notifyName"]) {
+      const v = get(contact, k);
+      if (typeof v === "string" && v.trim() && !/^\+?[\d\s()-]+$/.test(v)) return v.trim();
+    }
+    return "";
+  }
+  const contactOf = (id) => {
+    try {
+      return WPP()?.contact?.get?.(id);
+    } catch {
+      return undefined;
+    }
+  };
 
   // tipos internos do WhatsApp que não são mensagens de conversa
   const SKIP = new Set(["e2e_notification", "notification_template", "notification", "gp2", "protocol", "ciphertext", "call_log", "broadcast_notification", "pinned_message", "keep_in_chat"]);
@@ -56,7 +74,7 @@
     const id = ser(idObj);
     const fromMe = Boolean(idObj?.fromMe ?? get(m, "fromMe"));
     const chatId = ser(idObj?.remote ?? get(m, fromMe ? "to" : "from"));
-    if (!id || !USER_CHAT.test(chatId)) return null;
+    if (!id || !CHAT.test(chatId)) return null;
     const rawType = String(get(m, "type") || "");
     if (SKIP.has(rawType)) return null;
     const isAudio = rawType === "ptt" || rawType === "audio";
@@ -73,6 +91,16 @@
       revoked: rawType === "revoked",
     };
     if (isAudio) msg.audio = { duration: Number(get(m, "duration") || 0), ptt: rawType === "ptt" };
+    // grupo: quem mandou (id do participante, nome e número, quando o WhatsApp mostra)
+    if (isGroup(chatId) && !fromMe) {
+      const author = ser(get(m, "author") || get(m, "sender"));
+      if (author) {
+        const contact = contactOf(author);
+        msg.author = author;
+        msg.authorName = contactName(contact) || String(get(m, "notifyName") || "").trim();
+        msg.authorPhone = phoneOf(author, contact);
+      }
+    }
     if (type === "other") msg.label = LABELS[rawType] || "Mídia";
     if (rawType === "document") msg.filename = String(get(m, "filename") || "");
     const kind = MEDIA_KINDS[rawType];
@@ -89,21 +117,21 @@
   function serializeChat(c) {
     if (!c) return null;
     const chatId = ser(get(c, "id"));
-    if (!USER_CHAT.test(chatId)) return null;
-    const contact = get(c, "contact");
-    let name = "";
-    for (const k of ["name", "formattedName", "verifiedName", "pushname", "notifyName"]) {
-      const v = get(contact, k);
-      if (typeof v === "string" && v.trim() && !/^\+?[\d\s()-]+$/.test(v)) {
-        name = v.trim();
-        break;
-      }
-    }
+    if (!CHAT.test(chatId)) return null;
+    const group = isGroup(chatId);
+    const contact = group ? null : get(c, "contact");
+    const meta = group ? get(c, "groupMetadata") : null;
+    let name = group ? String(get(meta, "subject") || get(c, "formattedTitle") || get(c, "name") || "").trim() : contactName(contact);
     if (!name) name = String(get(c, "formattedTitle") || "");
     let last = null;
     try {
       last = serializeMessage(get(c, "msgs")?.last?.());
     } catch {}
+    if (group) {
+      const parts = get(meta, "participants");
+      const count = Number(parts?.length ?? parts?.models?.length ?? get(meta, "size") ?? 0);
+      return { chatId, isGroup: true, name, participantsCount: count || undefined, unreadCount: Math.max(0, Number(get(c, "unreadCount") || 0)), lastMessageAt: 1000 * Number(get(c, "t") || 0) || last?.ts || 0, last, avatarUrl: cachedAvatar(chatId) };
+    }
     return {
       chatId,
       phone: phoneOf(chatId, contact),
@@ -170,8 +198,42 @@
         return { ready: ready(), me };
       }
       case "listChats": {
-        const list = (await chat.list({ onlyUsers: true, count: cmd.count || 300 })) ?? [];
+        const list = (await chat.list({ count: cmd.count || 300 })) ?? [];
         return list.map(serializeChat).filter(Boolean);
+      }
+      case "listGroups": {
+        // todos os grupos da conta (mesmo sem mensagens recentes)
+        let list = [];
+        try {
+          list = (await chat.list({ onlyGroups: true })) ?? [];
+        } catch {}
+        if (!list.length) list = ((await chat.list({})) ?? []).filter((c) => isGroup(ser(get(c, "id"))));
+        return list.map(serializeChat).filter((c) => c?.isGroup);
+      }
+      case "groupInfo": {
+        // participantes com nome e número; @lid sem número conhecido conta como oculto
+        const gid = cmd.chatId;
+        if (!isGroup(gid)) throw new Error("Esta conversa não é um grupo.");
+        const c = chat.get?.(gid);
+        const meta = get(c, "groupMetadata");
+        let parts = [];
+        try {
+          parts = (await WPP().group.getParticipants(gid)) ?? [];
+        } catch {
+          parts = get(meta, "participants")?.getModelsArray?.() || get(meta, "participants") || [];
+        }
+        let me = "";
+        try {
+          me = ser(WPP()?.conn?.getMyUserId?.());
+        } catch {}
+        const participants = [...parts].map((p) => {
+          const id = ser(get(p, "id"));
+          const contact = contactOf(id);
+          const phone = phoneOf(id, contact);
+          return { id, phone: phone || null, name: contactName(contact), pushname: String(get(contact, "pushname") || ""), isAdmin: Boolean(get(p, "isAdmin")), isSuperAdmin: Boolean(get(p, "isSuperAdmin")), isMe: Boolean(me && (id === me || (phone && me.startsWith(`${phone}@`)))) };
+        });
+        const creation = Number(get(meta, "creation") || 0);
+        return { chatId: gid, subject: String(get(meta, "subject") || get(c, "formattedTitle") || ""), desc: String(get(meta, "desc") || ""), createdAt: creation ? creation * 1000 : null, participants };
       }
       case "getMessages": {
         const opts = { count: cmd.count || 50, direction: "before" };

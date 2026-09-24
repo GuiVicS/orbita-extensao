@@ -354,6 +354,7 @@
       if (info.pushname) next.pushname = info.pushname;
       if (info.avatarUrl && info.avatarUrl !== next.avatarUrl) Object.assign(next, { avatarUrl: info.avatarUrl, avatarAt: Date.now() });
       if (info.phone) next.phone = info.phone;
+      if (info.isGroup) Object.assign(next, { isGroup: true, ...(info.participantsCount ? { participantsCount: info.participantsCount } : {}) });
       // de qual conta do WhatsApp é esta conversa (dados ao vivo vêm sempre da conta conectada)
       if (account) next.account = account;
       if (lastMsg && lastMsg.ts >= (next.lastMessageAt || 0)) {
@@ -663,6 +664,19 @@
         const settings = await C.loadSettings();
         const r = await T.correct({ text: String(req.text || ""), lang: settings.myLang });
         return { text: r.text, changed: r.changed };
+      }
+
+      case C.OPS.GROUP_LIST: {
+        const groups = await exec({ op: C.TAB_CMDS.LIST_GROUPS }, 90000);
+        return groups.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+      }
+
+      case C.OPS.GROUP_INFO: {
+        const info = await exec({ op: C.TAB_CMDS.GROUP_INFO, chatId: String(req.chatId) }, 60000);
+        // guarda o total de participantes na conversa (cabeçalho e lista)
+        const chat = await C.updateChat(info.chatId, (c) => (c ? { ...c, isGroup: true, participantsCount: info.participants.length, name: info.subject || c.name } : null));
+        if (chat) broadcast(C.EVENTS.CHAT_UPDATED, { chat });
+        return info;
       }
 
       case C.OPS.SEND_FILE:

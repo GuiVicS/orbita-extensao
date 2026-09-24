@@ -1,0 +1,10 @@
+[
+  {
+    "before": "whatsapp:{label:\"WhatsApp\",icon:ws}};",
+    "after": "whatsapp:{label:\"WhatsApp\",icon:ws},\"whatsapp-group\":{label:\"Grupo do WhatsApp\",icon:bs(\"users\",[[\"path\",{d:\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\",key:\"orbgrp1\"}],[\"circle\",{cx:\"9\",cy:\"7\",r:\"4\",key:\"orbgrp2\"}],[\"path\",{d:\"M22 21v-2a4 4 0 0 0-3-3.87\",key:\"orbgrp3\"}],[\"path\",{d:\"M16 3.13a4 4 0 0 1 0 7.75\",key:\"orbgrp4\"}]])}};"
+  },
+  {
+    "before": "const t=dT[e.source];",
+    "after": "const t=dT[e.source]??dT.import;"
+  }
+]

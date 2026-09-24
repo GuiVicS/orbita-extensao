@@ -6,6 +6,9 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 ## Novidades da 1.13.0
 
+- **Grupos do WhatsApp nas Conversas.** Os grupos aparecem na lista (filtro **Grupos**), com a prévia “Fulano: mensagem”. Na conversa, cada mensagem mostra **quem mandou** (nome colorido e número, como no WhatsApp), e você responde no grupo normalmente.
+- **Dados do grupo** no painel lateral: descrição, data de criação e **participantes com nome, número e quem é admin/criador** (busca quando o grupo é grande). Clicar num participante com quem você já conversa abre a conversa dele.
+- **Lista de contatos a partir de grupo.** “Criar lista” gera uma lista separada (“Grupo: nome”, origem **Grupo do WhatsApp** em Contatos) com as variáveis `{{grupo}}` e `{{admin}}`. Depois, “Atualizar lista” acrescenta quem entrou. Para vários grupos de uma vez: filtro **Grupos → Criar listas dos grupos**, marque os grupos e pronto (uma lista por grupo, sem duplicar). O seu número e os números ocultos pelo WhatsApp (IDs `@lid` sem número) ficam de fora, e o painel avisa quantos.
 - **Conversas: emojis e figurinhas.** Botão **😊** ao lado do campo de mensagem abre um painel como o do WhatsApp:
   - **Emojis**: busca em português (“coração”, “polegar”, “foguete”; acentos opcionais, Enter insere o primeiro), categorias com rolagem e destaque da atual, **recentes**, **tom de pele** e prévia do nome. O painel fica aberto enquanto você escolhe e o cursor volta ao campo. Só aparecem emojis que o seu computador sabe desenhar, e as **bandeiras** funcionam também no Windows.
   - **Digite `:` e parte do nome** (ex.: `:foguet`) para sugestões na hora: Tab ou Enter escolhe, setas navegam, Esc fecha.
@@ -109,7 +112,7 @@ aba do WhatsApp (js/chat-page.js, WA-JS) ⇄ js/chat-content.js ⇄ porta "orbit
 ```sh
 node --test tests/*.test.mjs            # unitários (motor de tradução, transcrição, voz, utilidades)
 npm i -D playwright && npx playwright install chromium
-node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect, stale-worker, sticker, emoji-sticker
+node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect, stale-worker, sticker, emoji-sticker, groups
 ```
 
 Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web simulado (`tests/e2e/fake-whatsapp.html`) e provedores de IA/voz simulados — nenhuma chave real é usada.
@@ -188,6 +191,7 @@ Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web
 | `3-4-service-worker.json` | `js/service_worker.js` | Número sem WhatsApp reduzia o intervalo para 2–4 s; sem pausa por lote; sem limite diário | Intervalo normal sempre; padrão pausa de 10 min a cada 25 envios; limite diário global de 250 contatos (`settings.dailyLimit`, contador em `chrome.storage.local["orbita:dailySent"]`), retomando no dia seguinte |
 | `4-ui-defaults.json` | `js/dashboard.js`, `js/popup.js` | Padrão da UI com `batchSize: 0` | Padrão `batchSize: 25`, `batchPauseMin: 10` |
 | `10-ficha-lead.json` | `js/dashboard.js` | CRM só com etapa, tags e notas | Ficha do lead (`js/lead-form.js`) no card do cliente; clientes do Kanban trazem `lead`/`deal` e o card mostra temperatura e valor |
+| `11-listas-de-grupo.json` | `js/dashboard.js` | Listas com origem desconhecida quebravam a página Contatos | Origem “Grupo do WhatsApp” (`whatsapp-group`, ícone de pessoas) e fallback para outras origens |
 | `9-modulo-conversas.json` | `js/dashboard.js` | Conversas sem liga/desliga | Módulo `conversas` (padrão ligado) e item do menu ligado a ele |
 | `8-conversas-tela-cheia.json` | `js/dashboard.js` | iframe das Conversas sem permissão de tela cheia | `allow="microphone; fullscreen"` e `allowFullScreen` |
 | `7-conversas.json` | `js/dashboard.js` | Sem chat no painel | Item “Conversas” no menu e rota `#/conversas` (página `conversas.html` em iframe) |
@@ -213,6 +217,7 @@ node patches/patch.mjs js/dashboard.js patches/7-conversas.json
 node patches/patch.mjs js/dashboard.js patches/8-conversas-tela-cheia.json
 node patches/patch.mjs js/dashboard.js patches/9-modulo-conversas.json
 node patches/patch.mjs js/dashboard.js patches/10-ficha-lead.json
+node patches/patch.mjs js/dashboard.js patches/11-listas-de-grupo.json
 ```
 
 `options.html`, `js/ia-options.js` e as entradas `options_ui` / `https://api.groq.com/*` do `manifest.json` não são patches: copie-os para o build novo.

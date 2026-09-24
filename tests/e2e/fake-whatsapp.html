@@ -50,6 +50,27 @@ const chats = {
   "5511912345678@c.us": { id: { _serialized: "5511912345678@c.us" }, contact: { name: "Carla Souza" }, unreadCount: 0 },
   "123456789@lid": { id: { _serialized: "123456789@lid" }, contact: { pushname: "Anna" }, formattedTitle: "Anna", unreadCount: 0 },
 };
+// grupos (só quando o teste pede): participantes com número, @lid com número conhecido e @lid oculto
+window.__contacts = {};
+window.__parts = {};
+if (window.__groups) {
+  const G = "120363000000000001@g.us", F = "120363000000000002@g.us";
+  const W = (id) => ({ _serialized: id });
+  Object.assign(window.__contacts, {
+    "5511999998888@c.us": { name: "John Smith", pushname: "John" },
+    "5511977776666@c.us": { pushname: "Maria Souza" },
+    "88888@lid": { pushname: "Pedro", phoneNumber: "5521988887777@c.us" },
+    "99999@lid": { pushname: "Oculto" },
+    "5531955554444@c.us": { name: "Tia Rosa" },
+  });
+  window.__parts[G] = [{ id: W("5511000000000@c.us"), isAdmin: true, isSuperAdmin: true }, { id: W("5511999998888@c.us"), isAdmin: true }, { id: W("5511977776666@c.us") }, { id: W("88888@lid") }, { id: W("99999@lid") }];
+  window.__parts[F] = [{ id: W("5511000000000@c.us"), isAdmin: true }, { id: W("5531955554444@c.us") }, { id: W("5511977776666@c.us") }];
+  const gm = (chat, n, author, body, t, fromMe = false) => ({ ...mk(chat, n, fromMe, body, t), ...(fromMe ? {} : { author: W(author) }) });
+  store[G] = [gm(G, 1, "5511999998888@c.us", "Bom dia, pessoal!", now - 900), gm(G, 2, "5511999998888@c.us", "Chegou o catálogo novo", now - 880), gm(G, 3, "5511977776666@c.us", "Oba, manda aí 😍", now - 600), gm(G, 4, "88888@lid", "Quero ver também", now - 300)];
+  store[F] = [gm(F, 1, "5531955554444@c.us", "Almoço domingo?", now - 5000)];
+  chats[G] = { id: W(G), formattedTitle: "Clientes VIP", groupMetadata: { subject: "Clientes VIP", desc: "Novidades e promoções\nSó para clientes", creation: now - 86400 * 30, participants: window.__parts[G] }, unreadCount: 1 };
+  chats[F] = { id: W(F), formattedTitle: "Família", groupMetadata: { subject: "Família", participants: window.__parts[F] }, unreadCount: 0 };
+}
 for (const [id, c] of Object.entries(chats)) { c.t = store[id].at(-1).t; c.msgs = { last: () => store[id].at(-1) }; }
 const ok = (id) => ({ id: { _serialized: id }, sendMsgResult: Promise.resolve({ messageSendResult: "OK" }) });
 let sent = 0;
@@ -109,7 +130,8 @@ const FAKE = {
 // fotos de perfil: John tem (vem do servidor), Anna não tem, Carla tem um link em memória que já expirou
 const PIC = (color) => "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect width='64' height='64' fill='${color}'/><circle cx='32' cy='25' r='12' fill='white'/><rect x='14' y='42' width='36' height='22' rx='11' fill='white'/></svg>`);
 window.__picCalls = [];
-FAKE.contact = { getProfilePictureUrl: async (id) => (window.__picCalls.push(id), id === "5511999998888@c.us" ? PIC("#0a7d5c") : id === "5511912345678@c.us" ? PIC("#b45309") : null) };
+FAKE.group = { getParticipants: async (id) => window.__parts[id] || [] };
+FAKE.contact = { get: (id) => window.__contacts[id], getProfilePictureUrl: async (id) => (window.__picCalls.push(id), id === "5511999998888@c.us" ? PIC("#0a7d5c") : id === "5511912345678@c.us" ? PIC("#b45309") : null) };
 FAKE.whatsapp = { ProfilePicThumbStore: { get: (id) => (id === "5511912345678@c.us" ? { img: "https://expirado.invalid/foto.jpg" } : undefined) } };
 Object.defineProperty(window, "WPP", { get: () => FAKE, set() {}, configurable: false });
 window.__fire = (ev, payload) => (handlers[ev] || []).forEach((f) => f(payload));
