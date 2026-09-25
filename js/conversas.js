@@ -1370,10 +1370,13 @@
     else if (v.stage === "choose") {
       const lang = esc(langLabel(C.contactLangOf(S.current, S.settings)));
       const fishFirst = !dubbing();
-      body = `<div class="pvsec"><small>Gravação de ${fmtDur(v.duration || 0)} · como transformar em áudio em ${lang}?</small>
+      const other = S.voiceMode
+        ? `<b>${icon("languages", 15)} Transcrever e usar o Fish Audio</b><small>Vira texto para você revisar e traduzir; a voz é gerada a partir do texto.</small>`
+        : `<b>${icon("languages", 15)} Transformar em texto</b><small>A fala vira texto no campo, para você revisar e enviar como mensagem escrita.</small>`;
+      body = `<div class="pvsec"><small>Gravação de ${fmtDur(v.duration || 0)} · o que fazer com ela?</small>
         <div class="vchoose">
-          <button type="button" class="vopt ${fishFirst ? "" : "main"}" id="vcDubGo"><b>${icon("speaker", 15)} Dublar com a ElevenLabs</b><small>Sua própria fala, traduzida, com a sua entonação e ritmo. Você ouve antes de enviar.</small></button>
-          <button type="button" class="vopt ${fishFirst ? "main" : ""}" id="vcFishGo"><b>${icon("languages", 15)} Transcrever e usar o Fish Audio</b><small>Vira texto para você revisar e traduzir; a voz é gerada a partir do texto.</small></button>
+          <button type="button" class="vopt ${fishFirst ? "" : "main"}" id="vcDubGo"><b>${icon("speaker", 15)} Dublar em ${lang} (ElevenLabs)</b><small>O próprio áudio é traduzido, sem virar texto: sua voz, entonação e ritmo. Você ouve antes de enviar.</small></button>
+          <button type="button" class="vopt ${fishFirst ? "main" : ""}" id="vcFishGo">${other}</button>
         </div></div>`;
     } else if (v.stage === "dubbing") {
       const p = v.progress || {};
@@ -1448,8 +1451,11 @@
     if (v?.stage !== "recording") return;
     clearInterval(v.timer);
     const blob = await v.rec.stop();
-    // modo áudio com a ElevenLabs configurada: você escolhe o caminho desta gravação
-    if (S.voiceMode && S.hasEleven) return setVoice({ stage: "choose", source: blob, duration: (Date.now() - v.start) / 1000 });
+    // ElevenLabs como opção principal: a gravação vai direto para a dublagem,
+    // só o áudio (nada de transcrição nem de texto no caminho)
+    if (S.hasEleven && dubbing()) return dubRecording(blob);
+    // Fish Audio como principal, mas com a ElevenLabs configurada: escolhe na hora
+    if (S.hasEleven) return setVoice({ stage: "choose", source: blob, duration: (Date.now() - v.start) / 1000 });
     return transcribeRecording(blob);
   }
 

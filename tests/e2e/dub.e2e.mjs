@@ -70,19 +70,15 @@ await f.locator("#voiceBtn").click();
 assert.match(await f.locator("#text").getAttribute("placeholder"), /Escreva, ou grave para dublar em inglês/);
 
 // gravar → dublar → ouvir → enviar
+// ElevenLabs principal: a gravação vai direto para a dublagem (sem escolha, sem texto)
+await dash.waitForTimeout(1500); // as vozes recebidas do John são transcritas ao abrir; espera e zera o registro
+await sw.evaluate(() => (globalThis.__calls = []));
 await f.locator("#micBtn").click();
 await f.locator("#vcStop").waitFor();
 await dash.waitForTimeout(1500);
 await f.locator("#vcStop").click();
-// depois de gravar: as duas opções; a principal (Opções) já vem selecionada
-await f.locator("#vcDubGo").waitFor();
-assert.equal(await f.locator("#vcFishGo").isVisible(), true);
-await dash.waitForTimeout(300);
-await dash.screenshot({ path: shots + "/dublagem-escolha.png" });
-assert.equal(await f.locator("#vcDubGo").evaluate((b) => b === document.activeElement), true);
-await sw.evaluate(() => (globalThis.__calls = [])); // (as vozes recebidas do John são transcritas ao abrir; aqui conta só a dublagem)
-await f.locator("#vcDubGo").click();
 await f.locator("#vcDub").waitFor({ timeout: 10000 });
+assert.equal(await f.locator("#vcDubGo").count(), 0);
 console.log("andamento:", await f.locator("#vcDub").innerText());
 await f.locator("#vcSend").waitFor({ timeout: 30000 });
 console.log("prévia:", (await f.locator(".pv").innerText()).replace(/\s+/g, " "));
@@ -116,7 +112,6 @@ await f.locator("#micBtn").click();
 await f.locator("#vcStop").waitFor();
 await dash.waitForTimeout(1000);
 await f.locator("#vcStop").click();
-await f.locator("#vcDubGo").click();
 await f.locator(".pvline.err").waitFor({ timeout: 15000 });
 console.log("sem créditos:", (await f.locator(".pvline.err").innerText()).replace(/\s+/g, " "));
 assert.match(await f.locator(".pvline.err").innerText(), /sem créditos/);
@@ -124,6 +119,35 @@ assert.equal(await wa.evaluate(() => __store["5511999998888@c.us"].length), befo
 await sw.evaluate(() => { globalThis.__quota = false; globalThis.__polls = 0; });
 await f.locator("#vcRegen", { hasText: "Tentar de novo" }).click();
 await f.locator("#vcSend").waitFor({ timeout: 30000 });
+await f.locator("#vcCancel").click();
+
+// fora do modo áudio também: gravação → dublagem direto, só o áudio
+await f.locator("#text").fill("");
+if (await f.locator("#voiceBtn.on").count()) await f.locator("#voiceBtn").click();
+await sw.evaluate(() => { globalThis.__calls = []; globalThis.__polls = 0; });
+await f.locator("#micBtn").click();
+await f.locator("#vcStop").waitFor();
+await dash.waitForTimeout(800);
+await f.locator("#vcStop").click();
+await f.locator("#vcSend").waitFor({ timeout: 30000 });
+const outside = await sw.evaluate(() => globalThis.__calls.map((c) => c.url));
+console.log("fora do modo áudio:", outside.map((u) => u.replace("https://api.elevenlabs.io", "")));
+assert.ok(outside.length && outside.every((u) => u.startsWith("https://api.elevenlabs.io/v1/dubbing")), "só áudio para a ElevenLabs, sem transcrição");
+await f.locator("#vcCancel").click();
+
+// Fish Audio como principal (com a chave da ElevenLabs): depois de gravar, as duas opções
+await dash.evaluate(async () => OrbitaChat.saveSettings({ voiceEngine: "fish" }));
+await dash.waitForTimeout(300);
+await f.locator("#voiceBtn.on").waitFor({ timeout: 1000 }).catch(() => f.locator("#voiceBtn").click());
+await f.locator("#micBtn").click();
+await f.locator("#vcStop").waitFor();
+await dash.waitForTimeout(800);
+await f.locator("#vcStop").click();
+await f.locator("#vcDubGo").waitFor();
+assert.match(await f.locator("#vcFishGo").innerText(), /Fish Audio/);
+assert.equal(await f.locator("#vcFishGo").evaluate((b) => b === document.activeElement), true); // Enter = a principal
+await dash.waitForTimeout(300);
+await dash.screenshot({ path: shots + "/dublagem-escolha.png" });
 await f.locator("#vcCancel").click();
 
 // a forma original continua: gravar → "Transcrever e usar o Fish Audio" → texto para revisar
@@ -140,6 +164,8 @@ await (async () => { for (let i = 0; i < 50; i++) { if ((await f.locator("#text"
 const orig = await sw.evaluate(() => globalThis.__calls.map((c) => c.url));
 console.log("fluxo original:", orig);
 assert.ok(orig.some((u) => u.includes("/audio/transcriptions")) && !orig.some((u) => u.includes("elevenlabs")));
+
+
 
 // sem a chave da ElevenLabs: gravar no modo áudio vai direto para a transcrição, como antes
 await dash.evaluate(() => chrome.storage.local.set({ "orbita:chat:secrets": {} }));
