@@ -719,6 +719,18 @@
         }
         const known = await Promise.all(msgs.map((m) => C.getMessage(m.id).catch(() => null)));
         msgs = msgs.map((m, i) => (known[i] ? C.mergeMessage(known[i], m) : m));
+        // áudios do período sem transcrição: transcreve antes de resumir (opcional,
+        // até maxAudioSec cada). Usa o mesmo transcritor das Conversas e guarda o resultado.
+        if (req.transcribe) {
+          const maxSec = Math.max(10, Number(req.maxAudioSec) || 300);
+          const need = msgs.filter((m) => m.ts > since && m.type === "audio" && !m.revoked && !m.audio?.transcript && m.audio?.transcriptStatus !== "empty" && (m.audio?.duration || 0) <= maxSec);
+          if (need.length) {
+            await C.upsertMessages(need);
+            for (const m of need) await transcribeMessage({ id: m.id, manual: true }).catch(() => {});
+            const fresh = new Map((await Promise.all(need.map((m) => C.getMessage(m.id).catch(() => null)))).filter(Boolean).map((m) => [m.id, m]));
+            msgs = msgs.map((m) => (fresh.has(m.id) ? C.mergeMessage(m, fresh.get(m.id)) : m));
+          }
+        }
         return globalThis.OrbitaSummary.summarizeChat({ chatId, name: String(req.name || ""), isGroup: Boolean(req.isGroup) }, msgs, { since, me: account, now: Date.now(), complete: await summaryAi() });
       }
 

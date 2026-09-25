@@ -134,7 +134,7 @@
         while (next < chats.length && !S.cancel) {
           const c = chats[next++];
           try {
-            results.push(await call(C.OPS.SUMMARY_CHAT, { chatId: c.chatId, name: c.name, isGroup: c.isGroup, since }));
+            results.push(await call(C.OPS.SUMMARY_CHAT, { chatId: c.chatId, name: c.name, isGroup: c.isGroup, since, transcribe: S.ai.transcribe !== false, maxAudioSec: S.ai.maxAudioSec || 300 }));
           } catch (e) {
             failed.push({ chatId: c.chatId, name: c.name, error: e.message });
             if (/chave|Configure|inválida|créditos|cota|limite/i.test(e.message) && failed.length >= 2) S.cancel = true; // problema do provedor: para logo
@@ -248,7 +248,19 @@
         ${oc ? `<label class="field" style="max-width:320px"><span>Chave do OpenCode ${hasKey ? "(salva)" : ""}</span><input class="in" type="password" data-a="ockey" placeholder="${hasKey ? "••••••••  (cole outra para trocar)" : "sk-… de opencode.ai/auth"}" autocomplete="off" spellcheck="false"></label>
           <button class="btn" data-a="ocsave">Salvar chave</button>` : ""}
       </div>
-      ${oc ? `<p class="muted small" style="margin:0">${hasKey ? "" : "<b>Falta a chave do OpenCode.</b> "}O Nemotron gratuito é um endpoint de teste da NVIDIA, com termos próprios de uso de dados — as conversas do período são enviadas para ele.</p>` : ""}`;
+      ${oc ? `<p class="muted small" style="margin:0">${hasKey ? "" : "<b>Falta a chave do OpenCode.</b> "}O Nemotron gratuito é um endpoint de teste da NVIDIA, com termos próprios de uso de dados — as conversas do período são enviadas para ele.</p>` : ""}
+      ${txHtml()}`;
+  }
+
+  // Áudios sem transcrição: transcreve antes de resumir (Whisper da Groq/OpenAI).
+  function txHtml() {
+    const on = S.ai.transcribe !== false;
+    const whisper = ["groq", "openai"].filter((k) => String(S.global.keys?.[k] || (k === "groq" ? S.global.apiKey : "") || "").trim());
+    return `<div class="row" style="gap:10px">
+        <label class="row small" style="gap:6px"><input type="checkbox" data-a="tx" ${on ? "checked" : ""} ${S.running ? "disabled" : ""}> Transcrever os áudios que faltam, de até</label>
+        <select class="in" data-a="txmax" style="width:auto;height:32px" ${on && !S.running ? "" : "disabled"}>${[60, 180, 300, 600, 900].map((v) => `<option value="${v}" ${v === (S.ai.maxAudioSec || 300) ? "selected" : ""}>${v / 60} min</option>`).join("")}</select>
+      </div>
+      ${on ? `<p class="muted small" style="margin:0">${whisper.length ? `Transcrição pelo Whisper (${whisper.map((k) => (k === "groq" ? "Groq" : "OpenAI")).join(" ou ")}) — fica salva e não é feita de novo. Áudios mais longos ficam em “Ficou de fora”.` : "<b>Para transcrever, configure uma chave da Groq ou da OpenAI</b> em Opções → Variações com IA (o Nemotron não transcreve áudio). Sem ela, os áudios ficam de fora."}</p>` : ""}`;
   }
 
   function exclHtml() {
@@ -351,6 +363,8 @@
     const t = e.target;
     if (t.dataset.a === "period") (S.period = t.value), render();
     else if (t.dataset.a === "ai") (S.ai = { ...S.ai, engine: t.value }), await set(K.ai, S.ai), render();
+    else if (t.dataset.a === "tx") (S.ai = { ...S.ai, transcribe: t.checked }), await set(K.ai, S.ai), render();
+    else if (t.dataset.a === "txmax") (S.ai = { ...S.ai, maxAudioSec: Number(t.value) }), await set(K.ai, S.ai), render();
     else if (t.dataset.a === "hist" && t.value) (S.current = S.history.find((h) => h.id === t.value)), render();
     else if (t.dataset.a === "showres") (S.showResolved = t.checked), render();
     else if (t.dataset.excl) {

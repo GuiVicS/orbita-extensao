@@ -19,15 +19,16 @@ await sw.evaluate(() => {
   globalThis.__prompts = [];
   const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
   globalThis.fetch = async (url, init = {}) => {
-    const body = JSON.parse(init.body || "{}");
+    const body = typeof init.body === "string" ? JSON.parse(init.body) : {}; // transcrição manda FormData
     (globalThis.__ai ||= []).push({ url, model: body.model, auth: init.headers?.Authorization });
     const sys = body.messages?.[0]?.content || "";
     const user = body.messages?.at(-1)?.content || "";
     const reply = (content) => new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
-    if (url.includes("/audio/transcriptions")) return new Response(JSON.stringify({ text: "", language: "portuguese" }), { status: 200 });
+    if (url.includes("/audio/transcriptions")) return (globalThis.__tx = (globalThis.__tx || 0) + 1), new Response(JSON.stringify({ text: "Me liga amanhã às 10h, por favor.", language: "portuguese" }), { status: 200 });
     if (/2 ou 3 frases/.test(sys)) return reply("Responda o John sobre o preço e confira a reunião de amanhã.");
     if (!/organiza o WhatsApp/.test(sys)) return reply("{}");
     globalThis.__prompts.push(user.split("\n")[0]);
+    (globalThis.__users ||= []).push(user);
     const n = (re) => Number((user.split("\n").find((l) => re.test(l)) || "").match(/^\[(\d+)\]/)?.[1]);
     if (/Conversa com: John Smith/.test(user))
       return reply(JSON.stringify({ summary: "John quer saber o preço.", priority: 3, items: [
@@ -44,7 +45,7 @@ const errors = [];
 const dash = await ctx.newPage();
 dash.on("pageerror", (e) => errors.push("dash: " + e.message));
 await dash.goto(`chrome-extension://${id}/dashboard.html#/`);
-await dash.evaluate(() => chrome.storage.local.set({ "orbita:ai": { provider: "openai", keys: { openai: "sk-test" }, models: { openai: "gpt-5" } } }));
+await dash.evaluate(() => chrome.storage.local.set({ "orbita:ai": { provider: "openai", keys: { openai: "sk-test" }, models: { openai: "gpt-5" } }, "orbita:chat:settings": { transcribeOnOpen: false } }));
 const wa = await ctx.newPage();
 await wa.addInitScript(() => (window.__groups = true));
 await wa.goto("https://web.whatsapp.com/");
@@ -59,6 +60,11 @@ await dash.waitForFunction(() => location.hash.startsWith("#/resumo"));
 const f = dash.frameLocator('iframe[title="Resumo do WhatsApp"]');
 await f.locator(".head .count").waitFor({ timeout: 60000 });
 console.log("conversas lidas pela IA:", await sw.evaluate(() => globalThis.__prompts));
+// áudios: o curto (3 s) foi transcrito antes de resumir; o longo (6:40) passou do limite (5 min)
+const johnPrompt = await sw.evaluate(() => globalThis.__users.find((u) => /Conversa com: John Smith/.test(u)));
+assert.match(johnPrompt, /John Smith: \(áudio\) Me liga amanhã às 10h, por favor\./);
+assert.equal(await sw.evaluate(() => globalThis.__tx), 1);
+assert.match(await f.locator("p:has-text(\"Ficou de fora:\")").innerText(), /1 áudio sem transcrição/);
 console.log("abertura:", await f.locator(".overview").innerText());
 const pending = await f.locator('section:has(h2:has-text("Precisam da sua resposta")) .it').allInnerTexts();
 console.log("pendências:", pending.map((t) => t.replace(/\n+/g, " | ")));
