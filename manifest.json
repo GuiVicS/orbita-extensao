@@ -104,7 +104,8 @@
     "https://openrouter.ai/*",
     "https://api.fish.audio/*",
     "https://api.elevenlabs.io/*",
-    "https://api.resend.com/*"
+    "https://api.resend.com/*",
+    "https://opencode.ai/*"
   ],
   "optional_host_permissions": [
     "http://*/*",

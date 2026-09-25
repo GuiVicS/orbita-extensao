@@ -120,6 +120,8 @@
     openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", jsonMode: true },
     gemini: { label: "Gemini", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", jsonMode: false },
     openrouter: { label: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", jsonMode: false },
+    // OpenCode Zen (compatível com OpenAI); modelo padrão: o Nemotron gratuito
+    opencode: { label: "OpenCode Zen", baseUrl: "https://opencode.ai/zen/v1", jsonMode: false, defaultModel: "nemotron-3-ultra-free" },
     custom: { label: "servidor próprio", baseUrl: "", jsonMode: false, keyOptional: true },
     anthropic: { label: "Anthropic", baseUrl: "https://api.anthropic.com/v1" },
   };
@@ -131,6 +133,7 @@
     openai: [/^gpt-5(?:\.\d+)?$/i, /^gpt-5(?!.*(?:nano|mini))/i, /^gpt-4\.1$/i, /^gpt-4o$/i, /^gpt-/i],
     gemini: [/gemini-[\d.]+-pro(?!.*(?:preview|exp))/i, /gemini-[\d.]+-flash(?!.*(?:lite|preview|exp))/i, /gemini-.*pro/i, /gemini-.*flash/i, /gemini/i],
     openrouter: [/^openrouter\/auto$/i],
+    opencode: [/^nemotron-3-ultra-free$/i, /nemotron/i],
     anthropic: [/^claude-opus-5$/i, /opus/i, /sonnet/i],
   };
   const PREFER_ANY = [/(?:^|[-/])(?:70b|120b|72b)\b/i, /gpt|llama|qwen|mistral|gemma|deepseek|claude|gemini/i];
@@ -144,16 +147,18 @@
     return list[0] || null;
   }
 
-  async function loadAiConfig() {
+  // override: { provider, model } — outra IA só para uma tarefa (ex.: o resumo),
+  // usando a chave daquele provedor guardada nas Opções.
+  async function loadAiConfig(override = {}) {
     const ai = (await chrome.storage.local.get("orbita:ai"))["orbita:ai"] || {};
-    const provider = ai.provider || "groq";
+    const provider = override.provider || ai.provider || "groq";
     const p = PROVIDERS[provider];
     if (!p) throw new TranslateError(E.NOT_CONFIGURED, `Provedor de IA desconhecido: ${provider}.`);
     const key = String(ai.keys?.[provider] ?? (provider === "groq" ? ai.apiKey : "") ?? "").trim();
     const baseUrl = (provider === "custom" ? ai.baseUrl || "" : p.baseUrl).trim().replace(/\/+$/, "");
     if (!baseUrl) throw new TranslateError(E.NOT_CONFIGURED, "Informe o endereço do servidor de IA nas Opções da extensão.");
-    if (!key && !p.keyOptional) throw new TranslateError(E.NOT_CONFIGURED, `Configure a chave do ${p.label} nas Opções da extensão (Variações com IA) para usar a tradução.`);
-    const model = String(ai.models?.[provider] || (provider === "groq" ? ai.model : "") || "").trim();
+    if (!key && !p.keyOptional) throw new TranslateError(E.NOT_CONFIGURED, `Configure a chave do ${p.label} nas Opções da extensão (Variações com IA) para usar a IA.`);
+    const model = String(override.model || ai.models?.[provider] || (provider === "groq" ? ai.model : "") || p.defaultModel || "").trim();
     return { provider, key, baseUrl, model, label: p.label, jsonMode: p.jsonMode };
   }
 
@@ -407,6 +412,8 @@
     buildCorrectPrompt, parseCorrection, checkCorrection, correct,
     // chamada direta ao provedor configurado (usada pelo resumo): { system, user } → texto
     complete: async (prompt) => completeWithRecovery(await loadAiConfig(), prompt),
+    completeWith: async (override, prompt) => completeWithRecovery(await loadAiConfig(override), prompt),
+    PROVIDERS,
     _setCacheStore: (s) => (cacheStore = s), // só para testes
   };
 })();

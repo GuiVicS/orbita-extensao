@@ -152,3 +152,25 @@ test("servidor compatível com OpenAI (ex.: OpenCode Zen): endereço, chave e mo
   await T.complete({ system: "s", user: "u" });
   assert.equal(calls.at(-1).url, "https://opencode.ai/zen/v1/chat/completions");
 });
+
+test("OpenCode Zen como provedor: Nemotron gratuito é o modelo padrão", async () => {
+  storage = { "orbita:ai": { provider: "opencode", keys: { opencode: "sk-oc" } } };
+  responder = () => oa('{"corrected":"Tudo certo."}');
+  await T.correct({ text: "tudo certo" });
+  assert.equal(calls[0].url, "https://opencode.ai/zen/v1/chat/completions");
+  assert.equal(calls[0].body.model, "nemotron-3-ultra-free");
+  assert.equal(calls[0].init.headers.Authorization, "Bearer sk-oc");
+});
+
+test("outra IA só para uma tarefa (resumo): usa a chave do OpenCode sem mudar o provedor principal", async () => {
+  storage = { "orbita:ai": { provider: "openai", keys: { openai: "sk-openai", opencode: "sk-oc" }, models: { openai: "gpt-5" } } };
+  responder = () => oa("{}");
+  await T.completeWith({ provider: "opencode", model: "nemotron-3-ultra-free" }, { system: "s", user: "u" });
+  assert.equal(calls.at(-1).url, "https://opencode.ai/zen/v1/chat/completions");
+  assert.equal(calls.at(-1).init.headers.Authorization, "Bearer sk-oc");
+  await T.complete({ system: "s", user: "u" });
+  assert.equal(calls.at(-1).url, "https://api.openai.com/v1/chat/completions");
+  // sem a chave do OpenCode: erro claro
+  storage = { "orbita:ai": { provider: "openai", keys: { openai: "sk-openai" } } };
+  await assert.rejects(T.completeWith({ provider: "opencode" }, { system: "s", user: "u" }), /chave do OpenCode Zen/);
+});

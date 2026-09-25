@@ -1,0 +1,10 @@
+[
+  {
+    "before": "openrouter:{id:\"openrouter\",label:\"OpenRouter (vários modelos)\",baseUrl:\"https://openrouter.ai/api/v1\",keyUrl:\"https://openrouter.ai/keys\",keyPlaceholder:\"sk-or-...\",jsonMode:!1},",
+    "after": "openrouter:{id:\"openrouter\",label:\"OpenRouter (vários modelos)\",baseUrl:\"https://openrouter.ai/api/v1\",keyUrl:\"https://openrouter.ai/keys\",keyPlaceholder:\"sk-or-...\",jsonMode:!1},opencode:{id:\"opencode\",label:\"OpenCode Zen\",baseUrl:\"https://opencode.ai/zen/v1\",keyUrl:\"https://opencode.ai/auth\",keyPlaceholder:\"sk-...\",jsonMode:!1},"
+  },
+  {
+    "before": "jo={groq:",
+    "after": "jo={opencode:[/^nemotron-3-ultra-free$/i,/nemotron/i],groq:"
+  }
+]

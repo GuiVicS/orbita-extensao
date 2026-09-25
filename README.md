@@ -4,6 +4,14 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.20.0
+
+- **OpenCode Zen como provedor de IA** (Opções → Variações com IA → **OpenCode Zen (Nemotron gratuito)**): chave de opencode.ai/auth e o modelo `nemotron-3-ultra-free` já sugerido. Opcional para tudo que usa IA — tradução, corretor, variações das campanhas, assistente do CRM e resumo.
+- **IA do resumo separada**: na página do Resumo, escolha **“Mesma das Opções”** ou **“OpenCode Zen · nemotron-3-ultra-free”** (com a chave ali mesmo). Dá para resumir com o Nemotron gratuito e manter outro provedor no resto.
+- **Apagar resumo**: “Apagar este resumo” e “Apagar todos”, com confirmação. As conversas não são apagadas, e o próximo “desde o último resumo” continua de onde parou.
+- Corrigido: salvar as Opções de IA apagava as chaves dos outros provedores; agora cada provedor guarda a sua.
+- Atenção: os modelos Nemotron gratuitos são endpoints de teste da NVIDIA, com termos próprios de uso de dados.
+
 ## Novidades da 1.19.0
 
 - **Resumo do WhatsApp.** Na **Visão geral** do painel, o cartão **“Resumo do WhatsApp”** tem o botão **Gerar resumo**. A Órbita lê as conversas **e os grupos** com mensagens **desde o último resumo** (ou 24 h, 3 dias, 7 dias) e organiza:
@@ -157,7 +165,7 @@ aba do WhatsApp (js/chat-page.js, WA-JS) ⇄ js/chat-content.js ⇄ porta "orbit
 ```sh
 node --test tests/*.test.mjs            # unitários (motor de tradução, transcrição, voz, utilidades)
 npm i -D playwright && npx playwright install chromium
-node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect, stale-worker, sticker, emoji-sticker, groups, dub, dub-incoming, reply-mention, group-import, email, summary
+node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect, stale-worker, sticker, emoji-sticker, groups, dub, dub-incoming, reply-mention, group-import, email, summary, ai-providers
 ```
 
 Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web simulado (`tests/e2e/fake-whatsapp.html`) e provedores de IA/voz simulados — nenhuma chave real é usada.
@@ -236,6 +244,7 @@ Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web
 | `3-4-service-worker.json` | `js/service_worker.js` | Número sem WhatsApp reduzia o intervalo para 2–4 s; sem pausa por lote; sem limite diário | Intervalo normal sempre; padrão pausa de 10 min a cada 25 envios; limite diário global de 250 contatos (`settings.dailyLimit`, contador em `chrome.storage.local["orbita:dailySent"]`), retomando no dia seguinte |
 | `4-ui-defaults.json` | `js/dashboard.js`, `js/popup.js` | Padrão da UI com `batchSize: 0` | Padrão `batchSize: 25`, `batchPauseMin: 10` |
 | `10-ficha-lead.json` | `js/dashboard.js` | CRM só com etapa, tags e notas | Ficha do lead (`js/lead-form.js`) no card do cliente; clientes do Kanban trazem `lead`/`deal` e o card mostra temperatura e valor |
+| `15-opencode.json` | `js/service_worker.js` | Sem OpenCode Zen nas variações/assistente | Provedor `opencode` (https://opencode.ai/zen/v1) e preferência pelo `nemotron-3-ultra-free` |
 | `14-resumo.json` | `js/dashboard.js` | Sem resumo das conversas | Cartão “Resumo do WhatsApp” na Visão geral (`js/summary-card.js`) e rota `#/resumo` (`resumo.html` em iframe) |
 | `13-modulo-email.json` | `js/dashboard.js` | Sem e-mail marketing | Módulo `email` (padrão desligado), item “E-mail” no menu e rota `#/email` (`email.html` em iframe) |
 | `12-importar-grupos.json` | `js/dashboard.js` | Importar do WhatsApp só lia agenda e conversas | Escolha “Agenda e conversas” / “Grupos” no topo da aba “Do WhatsApp” (`js/group-import.js`) |
@@ -269,6 +278,7 @@ node patches/patch.mjs js/dashboard.js patches/11-listas-de-grupo.json
 node patches/patch.mjs js/dashboard.js patches/12-importar-grupos.json
 node patches/patch.mjs js/dashboard.js patches/13-modulo-email.json
 node patches/patch.mjs js/dashboard.js patches/14-resumo.json
+node patches/patch.mjs js/service_worker.js patches/15-opencode.json
 ```
 
 `options.html`, `js/ia-options.js` e as entradas `options_ui` / `https://api.groq.com/*` do `manifest.json` não são patches: copie-os para o build novo.

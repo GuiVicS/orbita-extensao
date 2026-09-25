@@ -20,6 +20,7 @@ await sw.evaluate(() => {
   const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
   globalThis.fetch = async (url, init = {}) => {
     const body = JSON.parse(init.body || "{}");
+    (globalThis.__ai ||= []).push({ url, model: body.model, auth: init.headers?.Authorization });
     const sys = body.messages?.[0]?.content || "";
     const user = body.messages?.at(-1)?.content || "";
     const reply = (content) => new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
@@ -107,11 +108,40 @@ await conv.locator(".b.flash").waitFor({ timeout: 20000 });
 console.log("aberta na mensagem:", await conv.locator(".b.flash").innerText());
 assert.match(await conv.locator(".b.flash").innerText(), /Hi, I saw your ad/);
 
+// ---- IA do resumo: OpenCode Zen (Nemotron), sem mudar o provedor principal (OpenAI)
+await dash.goto(`chrome-extension://${id}/dashboard.html#/resumo`);
+const f2 = dash.frameLocator('iframe[title="Resumo do WhatsApp"]');
+await f2.locator('select[data-a="ai"]').selectOption("opencode");
+await f2.locator('[data-a="ockey"]').fill("sk-opencode");
+await f2.locator('[data-a="ocsave"]').click();
+await f2.locator('label:has-text("Chave do OpenCode (salva)")').waitFor();
+await f2.locator('select[data-a="period"]').selectOption("24h");
+await sw.evaluate(() => (globalThis.__ai = []));
+await f2.locator('[data-a="gen"]').click();
+await f2.locator('[data-a="gen"]:has-text("Gerar resumo")').waitFor({ timeout: 60000 });
+const used = await sw.evaluate(() => globalThis.__ai.filter((c) => /chat\/completions/.test(c.url)));
+console.log("IA do resumo:", [...new Set(used.map((c) => `${c.url} · ${c.model} · ${c.auth}`))]);
+assert.ok(used.length && used.every((c) => c.url === "https://opencode.ai/zen/v1/chat/completions" && c.model === "nemotron-3-ultra-free" && c.auth === "Bearer sk-opencode"));
+const ai = await dash.evaluate(async () => (await chrome.storage.local.get("orbita:ai"))["orbita:ai"]);
+assert.deepEqual([ai.provider, ai.keys.openai, ai.keys.opencode], ["openai", "sk-test", "sk-opencode"]);
+
+// ---- apagar um resumo e apagar todos
+const nHist = await dash.evaluate(async () => (await chrome.storage.local.get("orbita:summary:history"))["orbita:summary:history"].length);
+await f2.locator('[data-a="del"]').click();
+await f2.locator('.dialog [data-x="yes"]').click();
+await f2.locator('.toast:has-text("Resumo apagado")').waitFor();
+assert.equal(await dash.evaluate(async () => (await chrome.storage.local.get("orbita:summary:history"))["orbita:summary:history"].length), nHist - 1);
+await f2.locator('[data-a="delall"]').click();
+await f2.locator('.dialog [data-x="yes"]').click();
+await f2.locator('text=Nenhum resumo ainda').waitFor();
+assert.equal((await dash.evaluate(async () => (await chrome.storage.local.get("orbita:summary:history"))["orbita:summary:history"])).length, 0);
+assert.ok(await dash.evaluate(async () => (await chrome.storage.local.get("orbita:summary:last"))["orbita:summary:last"] > 0), "o marco do último resumo continua");
+
 // ---- cartão da Visão geral reflete o último resumo
 await dash.goto(`chrome-extension://${id}/dashboard.html#/`);
 await dash.waitForSelector(".osc");
 console.log("cartão:", await dash.locator(".osc").innerText());
-assert.match(await dash.locator(".osc").innerText(), /Último:/);
+assert.doesNotMatch(await dash.locator(".osc").innerText(), /Último:/); // todos apagados
 console.log("ERRORS", errors);
 assert.equal(errors.length, 0);
 await ctx.close();

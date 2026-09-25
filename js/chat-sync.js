@@ -574,6 +574,13 @@
     return out;
   }
 
+  // IA do resumo: a mesma das Opções ou o OpenCode Zen (Nemotron), escolhida na página do Resumo.
+  async function summaryAi() {
+    const cfg = (await chrome.storage.local.get("orbita:summary:ai"))["orbita:summary:ai"] || {};
+    if (cfg.engine === "opencode") return (prompt) => T.completeWith({ provider: "opencode", model: cfg.model || "nemotron-3-ultra-free" }, prompt);
+    return T.complete;
+  }
+
   // Anexo guardado pelo painel no cache de mídia ("up:<id>"). A porta do Chrome
   // tem limite de tamanho: o arquivo vai em pedaços e é remontado na aba.
   const UPLOAD_CHUNK = 4 * 1024 * 1024;
@@ -712,11 +719,11 @@
         }
         const known = await Promise.all(msgs.map((m) => C.getMessage(m.id).catch(() => null)));
         msgs = msgs.map((m, i) => (known[i] ? C.mergeMessage(known[i], m) : m));
-        return globalThis.OrbitaSummary.summarizeChat({ chatId, name: String(req.name || ""), isGroup: Boolean(req.isGroup) }, msgs, { since, me: account, now: Date.now(), complete: T.complete });
+        return globalThis.OrbitaSummary.summarizeChat({ chatId, name: String(req.name || ""), isGroup: Boolean(req.isGroup) }, msgs, { since, me: account, now: Date.now(), complete: await summaryAi() });
       }
 
       case C.OPS.SUMMARY_OVERVIEW:
-        return String(await T.complete(globalThis.OrbitaSummary.overviewPrompt(req.merged || {}))).trim().slice(0, 800);
+        return String(await (await summaryAi())(globalThis.OrbitaSummary.overviewPrompt(req.merged || {}))).trim().slice(0, 800);
 
       case C.OPS.GROUP_RESOLVE: {
         const id = String(req.id || "");
