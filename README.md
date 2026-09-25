@@ -4,6 +4,29 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.21.0
+
+- **Órbita Cloud (Supabase).** Em **Opções → Órbita Cloud**, o botão **Habilitar Cloud** abre um assistente de 5 passos:
+  1. **Conta no Supabase**: link para criar a conta (plano gratuito) ou **Já tenho conta**, com o passo a passo do projeto.
+  2. **Project URL + chave publicável** (`sb_publishable_…` ou a `anon` antiga). A chave secreta/service_role é recusada: ela dá acesso total e o Supabase a bloqueia em navegadores. Projetos fora do `supabase.co` (self-hosted) pedem permissão para o endereço.
+  3. **Usuário da Órbita Cloud** (e-mail e senha no Supabase Auth): **Entrar** ou **Criar usuário**, com aviso quando o projeto pede confirmação de e-mail. Cada registro fica preso ao usuário por RLS. Use o mesmo usuário em todos os computadores.
+  4. **Tabela**: a extensão verifica se `orbita_records` já existe. Se não existir, **cria automaticamente** com um token pessoal (`sbp_…`, usado só nessa hora e **não guardado**). A alternativa manual é **Copiar SQL** e colar no SQL Editor do projeto (link direto), depois **Já rodei, conferir**. O SQL cria a tabela, o índice, o RLS, a política, os GRANTs e o gatilho de `updated_at`.
+  5. **Primeira sincronização**. Se a nuvem está vazia, envia tudo. Se já tem dados, você escolhe:
+     - **Mesclar** (padrão): une os dois lados; num conflito vale o registro editado por último.
+     - **Usar os da nuvem**: substitui este computador.
+     - **Enviar os deste computador**: substitui a nuvem.
+
+     A opção **baixar um backup antes** vem marcada, e as opções que substituem dados pedem confirmação.
+- **Sincronização automática** a cada 1, 5 (padrão), 15 ou 60 minutos, ou só no botão **Sincronizar agora**. Roda pelo service worker (alarme `orbita-cloud`), mesmo com as Opções fechadas.
+  - Cada rodada baixa só o que mudou em outros computadores e envia só o que mudou aqui, incluindo remoções. Se o mesmo registro mudou aqui e lá, vale o daqui.
+  - Uma trava impede duas sincronizações ao mesmo tempo.
+  - Quando a sessão expira, as Opções pedem para entrar de novo.
+- **O que sincroniza**: listas e contatos, CRM (clientes e etapas), agenda, campanhas e destinatários, Conversas (conversas, mensagens, figurinhas sem arquivo), respostas rápidas e preferências.
+- **O que fica só neste computador**: as chaves de API (IA, Fish Audio, ElevenLabs, Resend), os arquivos (mídias e figurinhas, que continuam no backup) e o registro técnico.
+- Tudo fica numa tabela genérica, `orbita_records` (`store`, `id`, `data jsonb`, `deleted`, `updated_at`), então dados novos da Órbita entram sem mudar o SQL.
+- **Mais opções**: refazer a primeira sincronização; trocar de usuário ou projeto; **Desligar Cloud** (mantém a conexão); **Desconectar e esquecer**. Os dados na nuvem continuam no seu Supabase.
+- O backup em arquivo não leva a conexão nem a sessão da Cloud, e restaurar um backup não desconecta a Cloud.
+
 ## Novidades da 1.20.1
 
 - **Nemotron grátis pelo OpenRouter.** O plano gratuito do OpenCode Zen **só funciona dentro do app OpenCode** (a API responde 403 “FreeTierError” para outros programas). Por isso a seção **Opções → Nemotron (NVIDIA)** agora escolhe **por onde usar**: **OpenRouter — grátis (recomendado)**, com `nvidia/nemotron-3-ultra-550b-a55b:free` (chave em openrouter.ai/keys), ou OpenCode Zen (só com créditos pagos). Tem **Testar**, modelo e **“Usar no Resumo do WhatsApp”**; a chave de cada provedor é a mesma usada quando ele é o principal.
@@ -171,7 +194,7 @@ aba do WhatsApp (js/chat-page.js, WA-JS) ⇄ js/chat-content.js ⇄ porta "orbit
 ```sh
 node --test tests/*.test.mjs            # unitários (motor de tradução, transcrição, voz, utilidades)
 npm i -D playwright && npx playwright install chromium
-node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect, stale-worker, sticker, emoji-sticker, groups, dub, dub-incoming, reply-mention, group-import, email, summary, ai-providers
+node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect, stale-worker, sticker, emoji-sticker, groups, dub, dub-incoming, reply-mention, group-import, email, summary, ai-providers, cloud
 ```
 
 Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web simulado (`tests/e2e/fake-whatsapp.html`) e provedores de IA/voz simulados — nenhuma chave real é usada.

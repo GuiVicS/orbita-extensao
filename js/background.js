@@ -1,6 +1,16 @@
 // Service worker da extensão: carrega o build original e acrescenta os
 // handlers das respostas rápidas sem alterar o bundle minificado.
-importScripts("service_worker.js", "qr-common.js", "chat-common.js", "chat-translate.js", "chat-transcribe.js", "chat-voice.js", "chat-dub.js", "chat-summary.js", "chat-sync.js");
+importScripts("service_worker.js", "qr-common.js", "chat-common.js", "chat-translate.js", "chat-transcribe.js", "chat-voice.js", "chat-dub.js", "chat-summary.js", "chat-sync.js", "cloud-sync.js");
+
+// ---- Órbita Cloud: sincronização automática com o Supabase do usuário
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== "orbita-cloud") return;
+  (async () => {
+    if (!(await OrbitaCloud.loadConfig()).enabled) return;
+    await OrbitaCloud.sync();
+  })().catch((e) => console.warn("[Órbita Cloud]", e?.message));
+});
+OrbitaCloud.ensureSchedule().catch(() => {});
 
 // ---- código antigo na memória
 // O atualizador troca os arquivos da pasta, mas o Chrome pode continuar rodando
