@@ -1,0 +1,14 @@
+[
+  {
+    "before": "No={crm:!1,agenda:!1,conversas:!0}",
+    "after": "No={crm:!1,agenda:!1,conversas:!0,email:!1}"
+  },
+  {
+    "before": "key:\"orbitachat\"}]])},{path:\"/respostas-rapidas\"",
+    "after": "key:\"orbitachat\"}]])},{path:\"/email\",label:\"E-mail\",module:\"email\",icon:bs(\"mail\",[[\"rect\",{width:\"20\",height:\"16\",x:\"2\",y:\"4\",rx:\"2\",key:\"orbmail1\"}],[\"path\",{d:\"m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7\",key:\"orbmail2\"}]])},{path:\"/respostas-rapidas\""
+  },
+  {
+    "before": ":\"/conversas\"===e?(0,i().jsx)(\"iframe\",{src:\"conversas.html",
+    "after": ":\"/email\"===e?(0,i().jsx)(\"iframe\",{src:\"email.html?embed=1\",title:\"E-mail marketing\",style:{display:\"block\",width:\"100%\",height:\"calc(100vh - 4rem)\",border:0,margin:\"-2rem 0\",background:\"transparent\"}}):\"/conversas\"===e?(0,i().jsx)(\"iframe\",{src:\"conversas.html"
+  }
+]

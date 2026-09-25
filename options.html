@@ -22,6 +22,10 @@
       <label class=inline><input type=checkbox id=mod-conversas> Conversas</label>
       <p class=hint>Chat com os contatos do WhatsApp dentro do painel, com tradução, áudio, mídias e respostas rápidas. Desligado, o menu some e as mensagens deixam de ser sincronizadas.</p>
     </div>
+    <div class=module>
+      <label class=inline><input type=checkbox id=mod-email> E-mail marketing</label>
+      <p class=hint>Campanhas por e-mail pela Resend para as suas listas e clientes do CRM. Desligado, o menu some e nada é enviado; campanhas e descadastros ficam guardados. Agendamentos já entregues à Resend continuam lá (cancele pela campanha, se quiser).</p>
+    </div>
     <p class=hint>A Lista de Clientes e as Campanhas ficam sempre ativas. <span class=status id=modStatus></span></p>
   </section>
 
@@ -188,8 +192,30 @@
     </div>
     <pre id=testOut></pre>
   </section>
+<section id=emailSec>
+    <h2>E-mail marketing (Resend)</h2>
+    <p class=hint style="margin:0 0 6px">Usado pela página <b>E-mail</b> do painel (ligue o módulo acima). Os e-mails saem pela sua conta da <a href="https://resend.com" target=_blank rel=noopener>Resend</a>, de um domínio verificado lá.</p>
+    <label for=emKey>Chave da API da Resend</label>
+    <div class=row><input type=password id=emKey placeholder="re_…" autocomplete=off spellcheck=false><button type=button id=emToggle>Mostrar</button><button type=button id=emTest>Testar chave</button></div>
+    <p class=hint>Crie em resend.com → API Keys com <b>Full access</b> (a de “Sending access” não consegue criar contatos e campanhas). Fica só neste navegador e <b>não entra no backup</b>. <span class=status id=emKeyStatus></span></p>
+    <div class=grid2>
+      <div><label for=emFromName>Nome do remetente</label><input type=text id=emFromName placeholder="Ex.: Stellar Print"></div>
+      <div><label for=emFromEmail>E-mail do remetente</label><input type=text id=emFromEmail placeholder="contato@seudominio.com.br" list=emDomains autocomplete=off><datalist id=emDomains></datalist></div>
+    </div>
+    <p class=hint>O e-mail precisa ser de um domínio com status “verified” na Resend (resend.com/domains).</p>
+    <label for=emReplyTo>Responder para (opcional)</label><input type=text id=emReplyTo placeholder="atendimento@seudominio.com.br">
+    <div class=grid2>
+      <div><label for=emCompany>Empresa (rodapé)</label><input type=text id=emCompany placeholder="Razão social ou nome da loja"></div>
+      <div><label for=emAddress>Endereço (rodapé)</label><input type=text id=emAddress placeholder="Rua, número — cidade/UF"></div>
+    </div>
+    <p class=hint>Todo e-mail sai com o rodapé (empresa, endereço) e o link “Não quero mais receber”, hospedado pela Resend — quem clica nunca mais recebe campanhas.</p>
+    <div class=actions><button type=button class=primary id=emSave>Salvar</button><span class=status id=emStatus></span></div>
+  </section>
 </main>
 <script src=js/modules-options.js></script>
+<script src=js/email-resend.js></script>
+<script src=js/email-common.js></script>
+<script src=js/email-options.js></script>
 <script src=js/ia-options.js></script>
 <script src=js/chat-common.js></script>
 <script src=js/chat-translate.js></script>
