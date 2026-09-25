@@ -137,3 +137,18 @@ test("corretor: sem erros devolve igual; reescrita ou número alterado é descar
   assert.match(T.checkCorrection("oi {{nome}}", "Oi {{name}}").join(), /variáveis/);
   assert.throws(() => T.parseCorrection("Olá"), { code: "INVALID_OUTPUT" });
 });
+
+test("servidor compatível com OpenAI (ex.: OpenCode Zen): endereço, chave e modelo configurados", async () => {
+  storage = { "orbita:ai": { provider: "custom", baseUrl: "https://opencode.ai/zen/v1/", keys: { custom: "sk-zen" }, models: { custom: "nemotron-3-ultra-free" } } };
+  responder = () => oa('```json\n{"corrected":"Olá, tudo bem?"}\n```');
+  const r = await T.correct({ text: "ola, tudo bem?" });
+  assert.equal(r.text, "Olá, tudo bem?");
+  assert.equal(calls[0].url, "https://opencode.ai/zen/v1/chat/completions");
+  assert.equal(calls[0].init.headers.Authorization, "Bearer sk-zen");
+  assert.equal(calls[0].body.model, "nemotron-3-ultra-free");
+  assert.equal(calls[0].body.response_format, undefined); // sem modo JSON forçado em servidor próprio
+  // resumo usa a mesma configuração
+  responder = () => oa('{"summary":"x","priority":0,"items":[]}');
+  await T.complete({ system: "s", user: "u" });
+  assert.equal(calls.at(-1).url, "https://opencode.ai/zen/v1/chat/completions");
+});

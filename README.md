@@ -13,6 +13,7 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
   - **Cada item mostra a fonte** (conversa, quem, hora e o trecho da mensagem) e **Abrir conversa** leva à mensagem exata, destacada. Itens sem fonte válida são descartados — a IA não consegue inventar de onde tirou algo.
   - **Marcar resolvido**, **Grupos excluídos** (ficam de fora e não vão para a IA) e **resumos anteriores** (os 10 últimos). Só gera quando você clicar.
   - As mensagens do período vão para o provedor de IA das Opções; áudios entram pela transcrição que já existir (os sem transcrição aparecem em “Ficou de fora”).
+- **Opções → Variações com IA → “Compatível com OpenAI”** agora mostra o campo da chave (opcional para servidores locais). Serve para provedores como o **OpenCode Zen**: endereço `https://opencode.ai/zen/v1`, a chave de opencode.ai/auth e o modelo (ex.: `nemotron-3-ultra-free`). Vale para tradução, corretor, resumo e variações das campanhas.
 
 ## Novidades da 1.18.0
 
