@@ -405,6 +405,8 @@
     checkPreservation, parseOutput, buildPrompt, cacheKey, pickModel,
     translate,
     buildCorrectPrompt, parseCorrection, checkCorrection, correct,
+    // chamada direta ao provedor configurado (usada pelo resumo): { system, user } → texto
+    complete: async (prompt) => completeWithRecovery(await loadAiConfig(), prompt),
     _setCacheStore: (s) => (cacheStore = s), // só para testes
   };
 })();

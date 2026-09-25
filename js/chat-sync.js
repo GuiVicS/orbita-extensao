@@ -610,7 +610,7 @@
   // ------------------------------------------------------ pedidos do painel
   async function handle(req) {
     // ler grupos (importar contatos no painel) funciona mesmo com as Conversas desligadas
-    const readOnly = [C.OPS.STATUS, C.OPS.GROUP_LIST, C.OPS.GROUP_INFO, C.OPS.GROUP_RESOLVE].includes(req.op);
+    const readOnly = [C.OPS.STATUS, C.OPS.GROUP_LIST, C.OPS.GROUP_INFO, C.OPS.GROUP_RESOLVE, C.OPS.SUMMARY_CHATS, C.OPS.SUMMARY_CHAT, C.OPS.SUMMARY_OVERVIEW].includes(req.op);
     if (!readOnly && !(await C.moduleEnabled())) throw new Error("As Conversas estão desligadas em Opções → Módulos.");
     switch (req.op) {
       case C.OPS.STATUS:
@@ -686,6 +686,37 @@
         const groups = await exec({ op: C.TAB_CMDS.LIST_GROUPS }, 90000);
         return groups.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
       }
+
+      case C.OPS.SUMMARY_CHATS: {
+        // conversas (e grupos) com mensagens depois de "since", menos as excluídas
+        if (!status.ready) throw new Error("Abra o WhatsApp Web em uma aba do Chrome para gerar o resumo.");
+        const since = Number(req.since) || 0;
+        const excluded = new Set(req.excluded || []);
+        const list = await exec({ op: C.TAB_CMDS.LIST_CHATS, count: 400 }, 90000);
+        return list
+          .filter((c) => c.lastMessageAt > since && !excluded.has(c.chatId))
+          .sort((a, b) => b.lastMessageAt - a.lastMessageAt)
+          .map((c) => ({ chatId: c.chatId, name: c.name || c.pushname || C.formatPhone(c.phone) || "Contato", isGroup: Boolean(c.isGroup), lastMessageAt: c.lastMessageAt, unreadCount: c.unreadCount }));
+      }
+
+      case C.OPS.SUMMARY_CHAT: {
+        // mensagens do período direto do WhatsApp (até 4 páginas), com as transcrições
+        // que já existem aqui; depois a IA e a conferência das fontes
+        const since = Number(req.since) || 0;
+        const chatId = String(req.chatId || "");
+        let msgs = await exec({ op: C.TAB_CMDS.GET_MESSAGES, chatId, count: 100 }, 60000);
+        for (let page = 0; page < 3 && msgs.length && msgs[0].ts > since; page++) {
+          const older = await exec({ op: C.TAB_CMDS.GET_MESSAGES, chatId, count: 100, beforeId: msgs[0].id }, 60000);
+          if (!older.length) break;
+          msgs = [...older, ...msgs];
+        }
+        const known = await Promise.all(msgs.map((m) => C.getMessage(m.id).catch(() => null)));
+        msgs = msgs.map((m, i) => (known[i] ? C.mergeMessage(known[i], m) : m));
+        return globalThis.OrbitaSummary.summarizeChat({ chatId, name: String(req.name || ""), isGroup: Boolean(req.isGroup) }, msgs, { since, me: account, now: Date.now(), complete: T.complete });
+      }
+
+      case C.OPS.SUMMARY_OVERVIEW:
+        return String(await T.complete(globalThis.OrbitaSummary.overviewPrompt(req.merged || {}))).trim().slice(0, 800);
 
       case C.OPS.GROUP_RESOLVE: {
         const id = String(req.id || "");

@@ -752,7 +752,7 @@
     else body = textBlock(m);
     const sticker = !m.revoked && m.type === "other" && m.media?.kind === "sticker";
     const jumbo = !m.revoked && m.type === "text" && !m.textPt && !m.translatedText && C.emojiOnly(m.text);
-    const cls = ["b", m.fromMe ? "me" : "", first ? "first" : "", sticker ? "sticker" : "", jumbo ? `jumbo j${jumbo}` : "", m.revoked ? "revoked" : "", m._pending ? "pending" : "", m._new ? "new" : ""].filter(Boolean).join(" ");
+    const cls = ["b", m.fromMe ? "me" : "", first ? "first" : "", sticker ? "sticker" : "", jumbo ? `jumbo j${jumbo}` : "", S.flashId === m.id ? "flash" : "", m.revoked ? "revoked" : "", m._pending ? "pending" : "", m._new ? "new" : ""].filter(Boolean).join(" ");
     // menu do balão (apagar); não aparece em mensagens ainda sendo enviadas
     const menu = m._pending ? "" : `<button class="bmenu" data-menu="${esc(m.id)}" aria-label="Opções da mensagem" title="Opções">${icon("down", 16)}</button>`;
     const quote = m.quoted && !m.revoked ? quoteHtml(m.quoted, m) : "";
@@ -1231,6 +1231,17 @@
     return S.groupCache[c.chatId];
   }
 
+  // Vindo do Resumo: abre a conversa na mensagem da fonte (carrega as antigas se precisar).
+  async function jumpToMessage(id) {
+    const chatId = S.current?.chatId;
+    for (let i = 0; i < 8 && S.current?.chatId === chatId; i++) {
+      if (S.messages.some((m) => m.id === id)) return jumpToQuoted(id);
+      if (S.complete) break;
+      await loadOlder();
+    }
+    toast("Não encontrei a mensagem desse item nesta conversa.");
+  }
+
   function jumpToQuoted(stanza) {
     const m = stanza && S.messages.find((x) => String(x.id).includes(stanza));
     const el = m && document.querySelector(`#msgs [data-id="${CSS.escape(m.id)}"]`);
@@ -1239,6 +1250,10 @@
     el.classList.remove("flash");
     void el.offsetWidth;
     el.classList.add("flash");
+    // continua destacada se a conversa for redesenhada logo em seguida
+    S.flashId = m.id;
+    clearTimeout(S.flashTimer);
+    S.flashTimer = setTimeout(() => (S.flashId = null), 3000);
   }
 
   // ---- emojis e figurinhas (painel do botão 😊 e sugestões ao digitar ":")
@@ -2688,6 +2703,6 @@
     renderStatus();
     await loadChats().catch((e) => toast(e.message, "err"));
     const want = params.get("chat") || (params.get("phone") && S.chats.find((c) => C.phoneVariants(params.get("phone")).includes(c.phone))?.chatId);
-    if (want) openChat(want);
+    if (want) openChat(want).then(() => params.get("msg") && jumpToMessage(params.get("msg")));
   })();
 })();

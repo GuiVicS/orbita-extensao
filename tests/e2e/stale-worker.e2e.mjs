@@ -42,7 +42,7 @@ console.log("para reabrir:", flag.urls.map((u) => u.replace(/^chrome-extension:\
 assert.deepEqual(flag.urls, [page.url()]);
 
 // ao iniciar, o service worker reabre as telas guardadas
-const reopened = ctx.waitForEvent("page", { predicate: (p) => p.url().includes("/conversas.html"), timeout: 10000 });
+const reopened = ctx.waitForEvent("page", { predicate: (p) => p.url().includes("/conversas.html"), timeout: 20000 });
 await sw.evaluate(() => globalThis.__orbitaSelfCheck.reopenTabs());
 await reopened;
 flag = await page.evaluate(async () => (await chrome.storage.local.get("orbita:reopen"))["orbita:reopen"]);

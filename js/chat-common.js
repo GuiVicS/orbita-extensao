@@ -49,6 +49,9 @@
     GROUP_LIST: "group.list", // todos os grupos da conta
     GROUP_INFO: "group.info", // participantes (nome, número, admin) de um grupo
     GROUP_RESOLVE: "group.resolvePhone", // número de um participante oculto (@lid), um por vez
+    SUMMARY_CHATS: "summary.chats", // conversas com mensagens desde uma data
+    SUMMARY_CHAT: "summary.chat", // resumo de uma conversa (itens com fontes conferidas)
+    SUMMARY_OVERVIEW: "summary.overview", // abertura do resumo, a partir dos itens
   };
 
   // Módulo ligado/desligado em Opções → Módulos (padrão: ligado).

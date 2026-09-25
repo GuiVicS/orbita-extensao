@@ -1,0 +1,10 @@
+[
+  {
+    "before": "(0,i().jsx)(no,{session:e,onRefresh:t}),",
+    "after": "(0,i().jsx)(no,{session:e,onRefresh:t}),(0,i().jsx)(\"div\",{ref:t=>{t&&globalThis.OrbitaSummaryCard?.mount(t)}}),"
+  },
+  {
+    "before": ":\"/email\"===e?(0,i().jsx)(\"iframe\",{src:\"email.html?embed=1\"",
+    "after": ":\"/resumo\"===e?(0,i().jsx)(\"iframe\",{src:\"resumo.html?embed=1&\"+(window.location.hash.split(\"?\")[1]||\"\"),title:\"Resumo do WhatsApp\",style:{display:\"block\",width:\"100%\",height:\"calc(100vh - 4rem)\",border:0,margin:\"-2rem 0\",background:\"transparent\"}}):\"/email\"===e?(0,i().jsx)(\"iframe\",{src:\"email.html?embed=1\""
+  }
+]
