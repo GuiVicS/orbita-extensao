@@ -35,6 +35,7 @@
     TRANSCRIBE: "audio.transcribe", // transcreve (e traduz) um áudio
     TRANSCRIBE_DRAFT: "audio.transcribeDraft", // transcreve o que você gravou, para revisar
     VOICE_PREVIEW: "audio.generatePreview", // gera a voz (Fish Audio) do texto aprovado
+    VOICE_DUB: "audio.dub", // dubla a gravação (ElevenLabs), áudio → áudio
     SEND_AUDIO: "chat.sendAudio", // envia a voz gerada como mensagem de voz
     CRM_CHANGED: "crm.changed", // o CRM foi editado nas Conversas: refaz o vínculo da conversa
     AVATAR: "chat.avatar", // busca/atualiza a foto de perfil da conversa
@@ -72,6 +73,9 @@
     maxAudioSec: 180, // áudios mais longos só com clique
     fishVoiceId: "", // reference_id da voz no Fish Audio (a chave fica em "orbita:chat:secrets")
     fishModel: "s2.1-pro-free", // igual ao que funciona em contas sem créditos pagos
+    voiceEngine: "fish", // "fish" (texto → voz) | "elevenlabs" (gravação dublada, mantém a entonação)
+    dubDropBackground: true, // ElevenLabs: tira ruído e música de fundo
+    dubTimeoutSec: 180, // ElevenLabs: tempo máximo esperando a dublagem ficar pronta
     voiceSpeed: 1,
     maxTtsChars: 600, // texto máximo por áudio gerado
     maxVoiceSec: 60, // duração máxima do áudio gerado
@@ -103,6 +107,7 @@
     CHAT_UPDATED: "chat.updated",
     STATUS_CHANGED: "wa.status.changed",
     QR_PROGRESS: "qr.progress", // andamento do envio de uma resposta rápida
+    VOICE_PROGRESS: "voice.progress", // andamento da dublagem (ElevenLabs)
   };
 
   // Comandos que o service worker executa na aba do WhatsApp (chat-page.js).

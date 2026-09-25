@@ -819,6 +819,32 @@
         return { genId, mp3Key, text, textPt, lang, maxVoiceSec: settings.maxVoiceSec, notice };
       }
 
+      case C.OPS.VOICE_DUB: {
+        // ElevenLabs: a gravação vai inteira e volta dublada. Nada passa pela
+        // transcrição nem pelo Fish Audio.
+        const settings = await C.loadSettings();
+        const chat = await C.getChat(req.chatId);
+        const lang = C.contactLangOf(chat, settings);
+        const audio = b64ToBlob(String(req.data || ""), String(req.mime || "audio/wav"));
+        if (req.durationSec > settings.maxVoiceSec) throw new Error(`A gravação tem ${Math.round(req.durationSec)} s, acima do limite de ${settings.maxVoiceSec} s para mensagens de voz.`);
+        const started = Date.now();
+        const r = await globalThis.OrbitaVoice.engine("elevenlabs").generate({
+          audio,
+          filename: req.mime && /wav/.test(req.mime) ? "gravacao.wav" : "gravacao.webm",
+          sourceLang: settings.myLang,
+          targetLang: lang,
+          durationSec: Number(req.durationSec) || 0,
+          settings,
+          onProgress: (p) => broadcast(C.EVENTS.VOICE_PROGRESS, { chatId: req.chatId, ...p }),
+        });
+        const genId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+        const mediaKey = `dub:${genId}`;
+        await C.putMedia(mediaKey, r.blob, { chatId: req.chatId });
+        await C.setMeta(`voice:${req.chatId}`, { genId, text: "", textPt: "", lang, engine: "elevenlabs", createdAt: Date.now() });
+        console.info(`[Órbita] dublagem pronta em ${Math.round((Date.now() - started) / 1000)} s (${lang}).`);
+        return { genId, mp3Key: mediaKey, text: "", textPt: "", lang, maxVoiceSec: settings.maxVoiceSec, engine: "elevenlabs" };
+      }
+
       case C.OPS.SEND_AUDIO: {
         // Falha segura: só sai o áudio gerado a partir da aprovação guardada aqui.
         const settings = await C.loadSettings();
@@ -831,7 +857,9 @@
         let bin = "";
         for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
         const msg = await exec({ op: C.TAB_CMDS.SEND_VOICE, chatId: req.chatId, data: btoa(bin), mime: rec.blob.type || "audio/ogg; codecs=opus", duration: rec.duration }, 120000);
-        Object.assign(msg, { textPt: approval.textPt, lang: approval.lang, audio: { ...(msg.audio || {}), ptt: true, duration: Math.round(rec.duration), generated: true, transcript: approval.text, transcriptStatus: "done" } });
+        // dublada (ElevenLabs): não há texto; a transcrição fica para depois, se pedirem
+        const said = approval.text ? { transcript: approval.text, transcriptStatus: "done" } : {};
+        Object.assign(msg, { textPt: approval.textPt || undefined, lang: approval.lang, audio: { ...(msg.audio || {}), ptt: true, duration: Math.round(rec.duration), generated: true, engine: approval.engine || "fish", ...said } });
         await C.putMedia(msg.id, rec.blob); // o player toca sem baixar de novo
         await onIncoming(msg, { chatId: req.chatId });
         await C.setMeta(`voice:${req.chatId}`, null);

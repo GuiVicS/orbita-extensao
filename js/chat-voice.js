@@ -97,5 +97,28 @@
     return `tts:${[...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
   }
 
-  globalThis.OrbitaVoice = { tts, cacheKey, secrets, VoiceError, SECRETS_KEY, DEFAULT_MODEL, FREE_MODEL };
+  // ---- motores de voz
+  // Mesma interface para os dois: quem orquestra (service worker) não sabe
+  // qual é qual, só o tipo de entrada.
+  //   { id, label, input: "text" | "audio", generate(params) → { blob, ... } }
+  // fish:       texto (já traduzido) → voz clonada no Fish Audio
+  // elevenlabs: gravação → áudio dublado pela ElevenLabs (sem transcrição nem TTS)
+  const ENGINES = {
+    fish: {
+      id: "fish",
+      label: "Fish Audio (texto → voz)",
+      input: "text",
+      generate: ({ text, settings }) => tts({ text, voiceId: settings.fishVoiceId, model: settings.fishModel || DEFAULT_MODEL, speed: settings.voiceSpeed }),
+    },
+    elevenlabs: {
+      id: "elevenlabs",
+      label: "ElevenLabs Dubbing (áudio → áudio)",
+      input: "audio",
+      generate: ({ audio, filename, sourceLang, targetLang, durationSec, settings, onProgress }) =>
+        globalThis.OrbitaDub.dub({ blob: audio, filename, sourceLang, targetLang, durationSec, dropBackground: settings.dubDropBackground, timeoutSec: settings.dubTimeoutSec, onProgress }),
+    },
+  };
+  const engine = (id) => ENGINES[id] || ENGINES.fish;
+
+  globalThis.OrbitaVoice = { tts, cacheKey, secrets, VoiceError, SECRETS_KEY, DEFAULT_MODEL, FREE_MODEL, ENGINES, engine };
 })();

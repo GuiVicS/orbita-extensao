@@ -61,3 +61,20 @@ test("chave de cache depende de texto, voz, modelo e velocidade", async () => {
   assert.notEqual(a, await V.cacheKey({ text: "Hi", voiceId: "v", speed: 1.2 }));
   assert.match(a, /^tts:[0-9a-f]{64}$/);
 });
+
+test("motores de voz: mesma interface; ElevenLabs recebe só o áudio (sem texto)", async () => {
+  const V = globalThis.OrbitaVoice;
+  for (const e of Object.values(V.ENGINES)) {
+    assert.equal(typeof e.generate, "function");
+    assert.ok(["text", "audio"].includes(e.input));
+  }
+  assert.equal(V.engine("fish").input, "text");
+  assert.equal(V.engine("elevenlabs").input, "audio");
+  assert.equal(V.engine("desconhecido").id, "fish"); // padrão
+  let got = null;
+  globalThis.OrbitaDub = { dub: async (o) => ((got = o), { blob: new Blob(["x"]) }) };
+  const audio = new Blob(["gravação"]);
+  await V.engine("elevenlabs").generate({ audio, sourceLang: "pt", targetLang: "en", durationSec: 5, settings: { dubDropBackground: false, dubTimeoutSec: 90 } });
+  assert.deepEqual({ ...got, blob: got.blob === audio }, { blob: true, filename: undefined, sourceLang: "pt", targetLang: "en", durationSec: 5, dropBackground: false, timeoutSec: 90, onProgress: undefined });
+  delete globalThis.OrbitaDub;
+});

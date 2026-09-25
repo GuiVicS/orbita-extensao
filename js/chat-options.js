@@ -13,8 +13,8 @@
   for (const sel of ["c-myLang", "c-defaultContactLang"]) $(sel).innerHTML = Object.entries(LANGS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
 
   // campos simples: id "c-<chave>" ↔ settings[chave]
-  const FIELDS = ["myLang", "defaultContactLang", "tone", "contextMessages", "requirePreview", "autoCorrect", "autoCorrectReview", "transcriptionProvider", "maxAudioSec", "transcribeOnOpen", "fishVoiceId", "fishModel", "voiceSpeed", "maxVoiceSec", "maxTtsChars", "aiVoiceNotice"];
-  const LIMITS = { contextMessages: [0, 12], maxAudioSec: [10, 900], voiceSpeed: [0.5, 2], maxVoiceSec: [5, 300], maxTtsChars: [50, 3000] };
+  const FIELDS = ["myLang", "defaultContactLang", "tone", "contextMessages", "requirePreview", "autoCorrect", "autoCorrectReview", "voiceEngine", "dubDropBackground", "dubTimeoutSec", "transcriptionProvider", "maxAudioSec", "transcribeOnOpen", "fishVoiceId", "fishModel", "voiceSpeed", "maxVoiceSec", "maxTtsChars", "aiVoiceNotice"];
+  const LIMITS = { contextMessages: [0, 12], maxAudioSec: [10, 900], voiceSpeed: [0.5, 2], maxVoiceSec: [5, 300], maxTtsChars: [50, 3000], dubTimeoutSec: [30, 900] };
   let glossary = [];
 
   // kind: true = sucesso, false = erro, null = em andamento (neutro)
@@ -60,7 +60,10 @@
     }
     glossary = (s.glossary || []).map((g) => ({ ...g }));
     renderGlossary();
-    $("fishKey").value = (await V.secrets()).fishApiKey || "";
+    const sec = await V.secrets();
+    $("fishKey").value = sec.fishApiKey || "";
+    $("elevenKey").value = sec.elevenApiKey || "";
+    $("elevenBox").classList.toggle("dim", s.voiceEngine !== "elevenlabs");
     $("previewWarn").hidden = s.requirePreview;
     $("privacyState").textContent = s.privacyAccepted ? "aceito neste navegador." : "ainda não aceito (aparece ao ligar a tradução numa conversa).";
     const ai = (await chrome.storage.local.get("orbita:ai"))["orbita:ai"] || {};
@@ -69,6 +72,21 @@
   }
 
   $("c-requirePreview").addEventListener("change", (e) => ($("previewWarn").hidden = e.target.checked));
+  $("c-voiceEngine").addEventListener("change", (e) => $("elevenBox").classList.toggle("dim", e.target.value !== "elevenlabs"));
+  $("toggleEleven").addEventListener("click", () => {
+    const show = $("elevenKey").type === "password";
+    $("elevenKey").type = show ? "text" : "password";
+    $("toggleEleven").textContent = show ? "Ocultar" : "Mostrar";
+  });
+  $("elevenTest").addEventListener("click", async () => {
+    setStatus("elevenStatus", "Conferindo…", null);
+    try {
+      const r = await globalThis.OrbitaDub.checkKey($("elevenKey").value.trim());
+      setStatus("elevenStatus", `Chave válida${r.tier ? ` (plano ${r.tier})` : ""}${r.creditsLeft !== null ? ` · ${r.creditsLeft.toLocaleString("pt-BR")} créditos restantes` : ""}.`);
+    } catch (e) {
+      setStatus("elevenStatus", e.message, false);
+    }
+  });
   $("toggleFish").addEventListener("click", () => {
     const show = $("fishKey").type === "password";
     $("fishKey").type = show ? "text" : "password";
@@ -86,7 +104,7 @@
     patch.glossary = glossary.filter((g) => g.term.trim()).map((g) => ({ term: g.term.trim(), translation: g.keep ? "" : (g.translation || "").trim(), keep: Boolean(g.keep) }));
     await C.saveSettings(patch);
     const secrets = await V.secrets();
-    await chrome.storage.local.set({ [V.SECRETS_KEY]: { ...secrets, fishApiKey: $("fishKey").value.trim() } });
+    await chrome.storage.local.set({ [V.SECRETS_KEY]: { ...secrets, fishApiKey: $("fishKey").value.trim(), elevenApiKey: $("elevenKey").value.trim() } });
     await load();
     setStatus("chatStatus", "Preferências das Conversas salvas.");
   }

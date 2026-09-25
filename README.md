@@ -4,6 +4,14 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.14.0
+
+- **Conversas: voz traduzida com a dublagem da ElevenLabs (opcional).** Além do fluxo original (a gravação vira texto, é traduzida e o **Fish Audio** gera a voz), agora dá para **dublar a própria gravação**: a ElevenLabs recebe o áudio e devolve a fala já no idioma do contato, **com a sua voz, entonação e ritmo** — sem transcrição nem geração a partir de texto no meio.
+  - **As duas formas ficam disponíveis.** Texto digitado no modo áudio segue sempre pelo Fish Audio. Depois de **gravar** no modo áudio, você escolhe na hora: **Dublar com a ElevenLabs** ou **Transcrever e usar o Fish Audio**. Em Opções você define qual é a principal (a que o Enter escolhe). Sem a chave da ElevenLabs, nada muda.
+  - Você **ouve antes de enviar** (e pode “Dublar de novo”); vai como mensagem de voz gravada, com o selo “Voz gerada por IA” e o aviso opcional ao contato.
+  - **Opções → Conversas → Voz traduzida**: chave da ElevenLabs (com “Testar chave”, que mostra o plano e os créditos restantes; fica fora do backup), tirar ruído e música de fundo, e tempo máximo de espera (padrão 180 s).
+  - Erros claros para chave inválida, **sem créditos/cota**, dublagem com falha, tempo esgotado, e idioma fora da lista da ElevenLabs (31 idiomas) — conferidos **antes** de enviar o áudio, junto com os limites (1 GB e 2 h 30 min por arquivo; mensagens de voz respeitam a duração máxima das preferências). O projeto é apagado na ElevenLabs depois do download.
+
 ## Novidades da 1.13.0
 
 - **Grupos do WhatsApp nas Conversas.** Os grupos aparecem na lista (filtro **Grupos**), com a prévia “Fulano: mensagem”. Na conversa, cada mensagem mostra **quem mandou** (nome colorido e número, como no WhatsApp), e você responde no grupo normalmente.
@@ -112,7 +120,7 @@ aba do WhatsApp (js/chat-page.js, WA-JS) ⇄ js/chat-content.js ⇄ porta "orbit
 ```sh
 node --test tests/*.test.mjs            # unitários (motor de tradução, transcrição, voz, utilidades)
 npm i -D playwright && npx playwright install chromium
-node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect, stale-worker, sticker, emoji-sticker, groups
+node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect, stale-worker, sticker, emoji-sticker, groups, dub
 ```
 
 Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web simulado (`tests/e2e/fake-whatsapp.html`) e provedores de IA/voz simulados — nenhuma chave real é usada.

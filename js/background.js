@@ -1,6 +1,6 @@
 // Service worker da extensão: carrega o build original e acrescenta os
 // handlers das respostas rápidas sem alterar o bundle minificado.
-importScripts("service_worker.js", "qr-common.js", "chat-common.js", "chat-translate.js", "chat-transcribe.js", "chat-voice.js", "chat-sync.js");
+importScripts("service_worker.js", "qr-common.js", "chat-common.js", "chat-translate.js", "chat-transcribe.js", "chat-voice.js", "chat-dub.js", "chat-sync.js");
 
 // ---- código antigo na memória
 // O atualizador troca os arquivos da pasta, mas o Chrome pode continuar rodando

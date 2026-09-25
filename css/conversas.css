@@ -500,3 +500,13 @@ body.expanded .msgs { padding-left: 10%; padding-right: 10%; }
 .girow small { white-space: nowrap; }
 .gisel { display: inline-flex; align-items: center; gap: 6px; margin-right: auto; font-size: 13px; cursor: pointer; }
 .giprog { font-size: 12.5px; align-self: center; }
+
+/* depois de gravar no modo áudio: dublar (ElevenLabs) ou transcrever (Fish Audio) */
+.vchoose { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+.vopt { display: grid; gap: 4px; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); cursor: pointer; }
+.vopt b { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; }
+.pvsec .vopt small { display: block; margin: 0; color: var(--muted-foreground); font-size: 12px; line-height: 1.35; font-weight: 400; text-transform: none; letter-spacing: 0; }
+.vopt:hover { background: var(--muted); }
+.vopt.main { border-color: color-mix(in oklch, var(--primary) 45%, transparent); background: color-mix(in oklch, var(--primary) 7%, var(--card)); }
+.vopt.main b { color: var(--primary); }
+@media (max-width: 700px) { .vchoose { grid-template-columns: 1fr; } }

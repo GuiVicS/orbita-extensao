@@ -834,7 +834,7 @@
     vb.setAttribute("aria-pressed", String(S.voiceMode));
     $("#sendBtn").setAttribute("aria-label", S.voiceMode ? "Gerar áudio" : "Enviar mensagem");
     $("#sendBtn").innerHTML = icon(S.voiceMode ? "speaker" : "send", 18);
-    if (S.voiceMode && st.ok) ta.placeholder = `Escreva em ${langLabel(S.settings.myLang)}: vai como áudio${translating() ? ` em ${langLabel(C.contactLangOf(S.current, S.settings))}` : ""}`;
+    if (S.voiceMode && st.ok) ta.placeholder = S.hasEleven ? `Escreva, ou grave para dublar em ${langLabel(C.contactLangOf(S.current, S.settings))}` : `Escreva em ${langLabel(S.settings.myLang)}: vai como áudio${translating() ? ` em ${langLabel(C.contactLangOf(S.current, S.settings))}` : ""}`;
   }
 
   function trButton(c) {
@@ -1367,17 +1367,40 @@
       body = `<div class="rec"><span class="led"></span><span class="time" id="vcTime">0:00</span><div class="meter" id="vcMeter"></div><small>Fale em ${esc(langLabel(S.settings.myLang))}. Vira texto para você revisar.</small></div>`;
       acts = `<button class="btn" id="vcCancel" type="button">Descartar</button><button class="btn primary" id="vcStop" type="button">${icon("stop", 13)} Concluir</button>`;
     } else if (v.stage === "transcribing") body = `<div class="pvline">${icon("spinner", 14, 'class="spin"')} Transcrevendo sua fala…</div>`;
-    else if (v.stage === "generating") body = `<div class="pvline">${icon("spinner", 14, 'class="spin"')} Gerando a voz${v.lang && v.lang !== S.settings.myLang ? ` em ${esc(langLabel(v.lang))}` : ""}…</div>`;
-    else if (v.stage === "error") body = `<div class="pvline err">${icon("alert", 14)} <span>${esc(v.error)} <b>Nada foi enviado.</b></span></div>`;
+    else if (v.stage === "choose") {
+      const lang = esc(langLabel(C.contactLangOf(S.current, S.settings)));
+      const fishFirst = !dubbing();
+      body = `<div class="pvsec"><small>Gravação de ${fmtDur(v.duration || 0)} · como transformar em áudio em ${lang}?</small>
+        <div class="vchoose">
+          <button type="button" class="vopt ${fishFirst ? "" : "main"}" id="vcDubGo"><b>${icon("speaker", 15)} Dublar com a ElevenLabs</b><small>Sua própria fala, traduzida, com a sua entonação e ritmo. Você ouve antes de enviar.</small></button>
+          <button type="button" class="vopt ${fishFirst ? "main" : ""}" id="vcFishGo"><b>${icon("languages", 15)} Transcrever e usar o Fish Audio</b><small>Vira texto para você revisar e traduzir; a voz é gerada a partir do texto.</small></button>
+        </div></div>`;
+    } else if (v.stage === "dubbing") {
+      const p = v.progress || {};
+      const what = p.stage === "downloading" ? "Baixando o áudio dublado" : p.stage === "dubbing" ? `Dublando para ${esc(langLabel(v.lang))} com a sua voz` : "Enviando a gravação";
+      body = `<div class="pvline">${icon("spinner", 14, 'class="spin"')} <span id="vcDub">${what}… ${fmtDur(p.elapsedSec || 0)}${p.expectedSec ? ` (previsto ~${fmtDur(p.expectedSec)})` : ""}</span></div><small class="muted">ElevenLabs Dubbing: leva de alguns segundos a poucos minutos.</small>`;
+    } else if (v.stage === "generating") body = `<div class="pvline">${icon("spinner", 14, 'class="spin"')} Gerando a voz${v.lang && v.lang !== S.settings.myLang ? ` em ${esc(langLabel(v.lang))}` : ""}…</div>`;
+    else if (v.stage === "error") {
+      body = `<div class="pvline err">${icon("alert", 14)} <span>${esc(v.error)} <b>Nada foi enviado.</b></span></div>`;
+      if (v.source) acts += `<button class="btn primary" id="vcRegen" type="button">Tentar de novo</button>`; // mesma gravação
+    }
     else if (v.stage === "ready") {
-      body = `<div class="pvsec"><small>Ouça antes de enviar · ${fmtDur(v.duration)} · voz gerada por IA</small><audio controls src="${v.url}"></audio>
-        <div class="pvtext">${waFormat(v.text)}</div></div>`;
-      acts += `<button class="btn" id="vcRegen" type="button">Regenerar</button><button class="btn primary" id="vcSend" type="button">${icon("send", 14)} Enviar áudio</button>`;
+      body = v.source
+        ? `<div class="pvsec"><small>Ouça antes de enviar · ${fmtDur(v.duration)} · dublado em ${esc(langLabel(v.lang))} pela ElevenLabs</small><audio controls src="${v.url}"></audio>
+            <div class="pvtext muted">Sua gravação, na sua voz e com a sua entonação, falada em ${esc(langLabel(v.lang))}.</div></div>`
+        : `<div class="pvsec"><small>Ouça antes de enviar · ${fmtDur(v.duration)} · voz gerada por IA</small><audio controls src="${v.url}"></audio>
+            <div class="pvtext">${waFormat(v.text)}</div></div>`;
+      acts += `<button class="btn" id="vcRegen" type="button">${v.source ? "Dublar de novo" : "Regenerar"}</button><button class="btn primary" id="vcSend" type="button">${icon("send", 14)} Enviar áudio</button>`;
     }
     box.innerHTML = `<div class="pv" role="region" aria-label="Áudio">${body}<div class="pvact">${acts}</div></div>`;
     $("#vcCancel").onclick = () => cancelVoice();
     if ($("#vcStop")) $("#vcStop").onclick = () => stopRecording();
-    if ($("#vcRegen")) $("#vcRegen").onclick = () => generateVoice(v.textPt, true);
+    if ($("#vcDubGo")) {
+      $("#vcDubGo").onclick = () => dubRecording(v.source);
+      $("#vcFishGo").onclick = () => transcribeRecording(v.source);
+      (dubbing() ? $("#vcDubGo") : $("#vcFishGo")).focus(); // Enter = o motor preferido (Opções)
+    }
+    if ($("#vcRegen")) $("#vcRegen").onclick = () => (v.source ? dubRecording(v.source) : generateVoice(v.textPt, true));
     if ($("#vcSend")) {
       $("#vcSend").onclick = () => sendVoice();
       $("#vcSend").focus();
@@ -1425,6 +1448,13 @@
     if (v?.stage !== "recording") return;
     clearInterval(v.timer);
     const blob = await v.rec.stop();
+    // modo áudio com a ElevenLabs configurada: você escolhe o caminho desta gravação
+    if (S.voiceMode && S.hasEleven) return setVoice({ stage: "choose", source: blob, duration: (Date.now() - v.start) / 1000 });
+    return transcribeRecording(blob);
+  }
+
+  // Fluxo original: a gravação vira texto para revisar (e depois Fish Audio no modo áudio).
+  async function transcribeRecording(blob) {
     setVoice({ stage: "transcribing" });
     try {
       const r = await call(C.OPS.TRANSCRIBE_DRAFT, { data: await blobToB64(blob), mime: blob.type });
@@ -1461,12 +1491,46 @@
     }
   }
 
+  // ---- dublagem (ElevenLabs): gravação → áudio na língua do contato, na sua voz
+  const dubbing = () => S.settings?.voiceEngine === "elevenlabs";
+
+  async function dubRecording(source) {
+    const chatId = S.current.chatId;
+    const lang = C.contactLangOf(S.current, S.settings);
+    S.preview = null;
+    $("#text").readOnly = true;
+    setVoice({ stage: "dubbing", lang, source, progress: { stage: "uploading", elapsedSec: 0 } });
+    const started = Date.now();
+    const tick = setInterval(() => {
+      const el = $("#vcDub");
+      if (!el || S.voice?.stage !== "dubbing") return clearInterval(tick);
+      S.voice.progress = { ...S.voice.progress, elapsedSec: Math.round((Date.now() - started) / 1000) };
+      renderPreview();
+    }, 1000);
+    try {
+      const wav = await A.toWav(source); // formato que a ElevenLabs sempre aceita
+      if (wav.duration > S.settings.maxVoiceSec) throw new Error(`A gravação tem ${fmtDur(wav.duration)}, acima do limite de ${fmtDur(S.settings.maxVoiceSec)} para mensagens de voz.`);
+      const g = await call(C.OPS.VOICE_DUB, { chatId, data: await blobToB64(wav.blob), mime: "audio/wav", durationSec: wav.duration });
+      const media = await C.getMedia(g.mp3Key);
+      const ogg = await A.toOggOpus(media.blob); // formato da mensagem de voz do WhatsApp
+      if (ogg.duration > g.maxVoiceSec) throw new Error(`O áudio dublado ficou com ${fmtDur(ogg.duration)}, acima do limite de ${fmtDur(g.maxVoiceSec)}.`);
+      await C.putMedia(`gen:${g.genId}`, ogg.blob, { text: "", chatId, duration: ogg.duration });
+      if (S.current?.chatId !== chatId) return;
+      setVoice({ stage: "ready", source, lang: g.lang, textPt: "", genId: g.genId, text: "", duration: ogg.duration, url: URL.createObjectURL(ogg.blob) });
+    } catch (e) {
+      if (S.current?.chatId !== chatId) return;
+      setVoice({ stage: "error", source, error: e.message });
+    } finally {
+      clearInterval(tick);
+    }
+  }
+
   async function sendVoice() {
     const v = S.voice;
     if (v?.stage !== "ready") return;
     const chatId = S.current.chatId;
     const ta = $("#text");
-    const temp = { id: `pending-${Date.now()}`, chatId, fromMe: true, ts: Date.now(), type: "audio", text: "", textPt: translating() ? v.textPt : undefined, audio: { ptt: true, duration: v.duration, generated: true, transcript: v.text, transcriptStatus: "done" }, ack: 0, _pending: true, _new: true };
+    const temp = { id: `pending-${Date.now()}`, chatId, fromMe: true, ts: Date.now(), type: "audio", text: "", textPt: translating() ? v.textPt : undefined, audio: { ptt: true, duration: v.duration, generated: true, ...(v.text ? { transcript: v.text, transcriptStatus: "done" } : {}) }, ack: 0, _pending: true, _new: true };
     S.messages.push(temp);
     setVoice(null);
     ta.readOnly = false;
@@ -2038,6 +2102,12 @@
 
   function onEvent({ event, data }) {
     switch (event) {
+      case C.EVENTS.VOICE_PROGRESS:
+        if (S.voice?.stage === "dubbing" && data.chatId === S.current?.chatId) {
+          S.voice.progress = { ...S.voice.progress, ...data };
+          renderPreview();
+        }
+        return;
       case C.EVENTS.QR_PROGRESS:
         return onQrProgress(data);
       case C.EVENTS.STATUS_CHANGED:
@@ -2396,6 +2466,13 @@
     welcome();
     connect();
     S.settings = await C.loadSettings();
+    // dublagem da ElevenLabs disponível? (opcional: só aparece com a chave configurada)
+    const loadEleven = async () => {
+      S.hasEleven = Boolean(((await chrome.storage.local.get("orbita:chat:secrets"))["orbita:chat:secrets"] || {}).elevenApiKey);
+      renderComposer();
+    };
+    await loadEleven();
+    chrome.storage.onChanged.addListener((ch, area) => area === "local" && "orbita:chat:secrets" in ch && loadEleven());
     await loadQuickReplies();
     chrome.storage.onChanged.addListener((ch, area) => {
       if (area === "local" && C.SETTINGS_KEY in ch) C.loadSettings().then((st) => ((S.settings = st), renderHeader(), renderComposer()));

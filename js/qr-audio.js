@@ -156,6 +156,38 @@
     return { blob: muxOgg(packets, samples.length), duration, peaks: peaksOf(samples, 48) };
   }
 
+  // WAV PCM 16 bits mono (24 kHz): formato que qualquer serviço aceita. Usado
+  // para mandar a gravação para a dublagem da ElevenLabs.
+  async function toWav(blob, rate = 24000) {
+    const { samples, duration } = await decodeToMono48k(blob);
+    const step = RATE / rate;
+    const n = Math.floor(samples.length / step);
+    const buf = new DataView(new ArrayBuffer(44 + n * 2));
+    const w = (o, t) => [...t].forEach((c, i) => buf.setUint8(o + i, c.charCodeAt(0)));
+    w(0, "RIFF");
+    buf.setUint32(4, 36 + n * 2, true);
+    w(8, "WAVEfmt ");
+    buf.setUint32(16, 16, true);
+    buf.setUint16(20, 1, true);
+    buf.setUint16(22, 1, true);
+    buf.setUint32(24, rate, true);
+    buf.setUint32(28, rate * 2, true);
+    buf.setUint16(32, 2, true);
+    buf.setUint16(34, 16, true);
+    w(36, "data");
+    buf.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) {
+      // média do bloco (48 kHz → 24 kHz), sem serrilhado audível na voz
+      let acc = 0;
+      const a = Math.floor(i * step);
+      const b = Math.min(samples.length, Math.floor((i + 1) * step));
+      for (let j = a; j < b; j++) acc += samples[j];
+      const v = Math.max(-1, Math.min(1, acc / Math.max(1, b - a)));
+      buf.setInt16(44 + i * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+    }
+    return { blob: new Blob([buf.buffer], { type: "audio/wav" }), duration };
+  }
+
   function peaksOf(samples, n) {
     const out = [];
     const step = Math.max(1, Math.floor(samples.length / n));
@@ -216,5 +248,5 @@
     };
   }
 
-  globalThis.OrbitaAudio = { supported, toOggOpus, analyze, startRecording };
+  globalThis.OrbitaAudio = { supported, toOggOpus, toWav, analyze, startRecording };
 })();
