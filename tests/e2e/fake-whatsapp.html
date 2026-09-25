@@ -143,7 +143,10 @@ const FAKE = {
 const PIC = (color) => "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect width='64' height='64' fill='${color}'/><circle cx='32' cy='25' r='12' fill='white'/><rect x='14' y='42' width='36' height='22' rx='11' fill='white'/></svg>`);
 window.__picCalls = [];
 FAKE.group = { getParticipants: async (id) => window.__parts[id] || [] };
-FAKE.contact = { get: (id) => window.__contacts[id], getProfilePictureUrl: async (id) => (window.__picCalls.push(id), id === "5511999998888@c.us" ? PIC("#0a7d5c") : id === "5511912345678@c.us" ? PIC("#b45309") : null) };
+FAKE.contact = {
+  // participante oculto: o número só aparece consultando (como ao clicar no contato), e só se o teste pedir
+  getPnLidEntry: async (id) => ((window.__pnCalls ||= []).push(id), window.__lidResolve && id === "99999@lid" ? { lid: { _serialized: id }, phoneNumber: { _serialized: "5548911112222@c.us" } } : {}),
+  get: (id) => window.__contacts[id], getProfilePictureUrl: async (id) => (window.__picCalls.push(id), id === "5511999998888@c.us" ? PIC("#0a7d5c") : id === "5511912345678@c.us" ? PIC("#b45309") : null) };
 FAKE.whatsapp = { ProfilePicThumbStore: { get: (id) => (id === "5511912345678@c.us" ? { img: "https://expirado.invalid/foto.jpg" } : undefined) } };
 Object.defineProperty(window, "WPP", { get: () => FAKE, set() {}, configurable: false });
 window.__fire = (ev, payload) => (handlers[ev] || []).forEach((f) => f(payload));

@@ -4,6 +4,11 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.17.0
+
+- **Importar contatos de grupos do WhatsApp.** Em **Contatos → Importar contatos → Do WhatsApp**, escolha **Grupos** (ao lado de “Agenda e conversas”): aparecem os seus grupos, com busca e “Marcar todos”. Entram **só os participantes dos grupos marcados**, com as variáveis `{{grupo}}` e `{{admin}}` — em **uma lista para cada grupo** (“Grupo: nome”; reimportar acrescenta só quem entrou) ou **tudo numa lista só**, sem números repetidos. Funciona mesmo com o módulo Conversas desligado.
+- **Números ocultos nos grupos.** Quando o WhatsApp mostra um participante sem o número (ID `@lid`), a Órbita consulta o WhatsApp **contato por contato**, como quem clica em cada um, antes de criar a lista (vale também para “Criar lista” no painel do grupo nas Conversas). Quem esconde o número pela privacidade continua de fora, e o total aparece no resultado.
+
 ## Novidades da 1.16.0
 
 - **Conversas: responder mensagens (citar), como no WhatsApp.** No menu do balão (setinha), **Responder** abre a faixa “Respondendo a…” acima do campo (Esc ou × cancela). A resposta vai citada no WhatsApp — texto, anexo, figurinha ou áudio. Mensagens que chegam respondendo a outra mostram a citação no balão; clique nela para ir até a mensagem original.
@@ -131,7 +136,7 @@ aba do WhatsApp (js/chat-page.js, WA-JS) ⇄ js/chat-content.js ⇄ porta "orbit
 ```sh
 node --test tests/*.test.mjs            # unitários (motor de tradução, transcrição, voz, utilidades)
 npm i -D playwright && npx playwright install chromium
-node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect, stale-worker, sticker, emoji-sticker, groups, dub, dub-incoming, reply-mention
+node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect, stale-worker, sticker, emoji-sticker, groups, dub, dub-incoming, reply-mention, group-import
 ```
 
 Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web simulado (`tests/e2e/fake-whatsapp.html`) e provedores de IA/voz simulados — nenhuma chave real é usada.
@@ -210,6 +215,7 @@ Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web
 | `3-4-service-worker.json` | `js/service_worker.js` | Número sem WhatsApp reduzia o intervalo para 2–4 s; sem pausa por lote; sem limite diário | Intervalo normal sempre; padrão pausa de 10 min a cada 25 envios; limite diário global de 250 contatos (`settings.dailyLimit`, contador em `chrome.storage.local["orbita:dailySent"]`), retomando no dia seguinte |
 | `4-ui-defaults.json` | `js/dashboard.js`, `js/popup.js` | Padrão da UI com `batchSize: 0` | Padrão `batchSize: 25`, `batchPauseMin: 10` |
 | `10-ficha-lead.json` | `js/dashboard.js` | CRM só com etapa, tags e notas | Ficha do lead (`js/lead-form.js`) no card do cliente; clientes do Kanban trazem `lead`/`deal` e o card mostra temperatura e valor |
+| `12-importar-grupos.json` | `js/dashboard.js` | Importar do WhatsApp só lia agenda e conversas | Escolha “Agenda e conversas” / “Grupos” no topo da aba “Do WhatsApp” (`js/group-import.js`) |
 | `11-listas-de-grupo.json` | `js/dashboard.js` | Listas com origem desconhecida quebravam a página Contatos | Origem “Grupo do WhatsApp” (`whatsapp-group`, ícone de pessoas) e fallback para outras origens |
 | `9-modulo-conversas.json` | `js/dashboard.js` | Conversas sem liga/desliga | Módulo `conversas` (padrão ligado) e item do menu ligado a ele |
 | `8-conversas-tela-cheia.json` | `js/dashboard.js` | iframe das Conversas sem permissão de tela cheia | `allow="microphone; fullscreen"` e `allowFullScreen` |
@@ -237,6 +243,7 @@ node patches/patch.mjs js/dashboard.js patches/8-conversas-tela-cheia.json
 node patches/patch.mjs js/dashboard.js patches/9-modulo-conversas.json
 node patches/patch.mjs js/dashboard.js patches/10-ficha-lead.json
 node patches/patch.mjs js/dashboard.js patches/11-listas-de-grupo.json
+node patches/patch.mjs js/dashboard.js patches/12-importar-grupos.json
 ```
 
 `options.html`, `js/ia-options.js` e as entradas `options_ui` / `https://api.groq.com/*` do `manifest.json` não são patches: copie-os para o build novo.

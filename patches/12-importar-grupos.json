@@ -1,0 +1,10 @@
+[
+  {
+    "before": "(0,i().jsx)(tT,{value:\"whatsapp\",children:null===u?",
+    "after": "(0,i().jsxs)(tT,{value:\"whatsapp\",children:[(0,i().jsx)(\"div\",{ref:t=>{t&&globalThis.OrbitaGroupImport?.mount(t)}}),null===u?"
+  },
+  {
+    "before": "(privacidade).\"]})]})})]}),ne&&",
+    "after": "(privacidade).\"]})]})]})]}),ne&&"
+  }
+]

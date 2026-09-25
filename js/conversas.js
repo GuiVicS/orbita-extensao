@@ -2105,7 +2105,10 @@
     const g = gside.info;
     if (!g) return;
     try {
-      const r = await globalThis.OrbitaGroupLists.save(g, { name: $("#grpListName")?.value });
+      const name = $("#grpListName")?.value;
+      const btn = $('[data-grp="save"]');
+      await globalThis.OrbitaGroupLists.resolveHidden([g], { onProgress: ({ done, total }) => total && btn && ((btn.disabled = true), (btn.textContent = `Buscando números ocultos: ${done} de ${total}…`)) });
+      const r = await globalThis.OrbitaGroupLists.save(g, { name });
       gside.list = await globalThis.OrbitaGroupLists.listFor(g.chatId);
       toast(r.created ? `Lista “${r.name}” criada com ${r.total} contatos.` : r.added ? `${r.added} ${r.added === 1 ? "contato novo" : "contatos novos"} na lista “${r.name}”.` : "A lista já estava em dia.", "ok");
     } catch (e) {
@@ -2185,7 +2188,9 @@
       for (const [i, id] of ids.entries()) {
         prog.textContent = `${i + 1} de ${ids.length}…`;
         try {
-          const r = await globalThis.OrbitaGroupLists.save(await call(C.OPS.GROUP_INFO, { chatId: id }));
+          const info = await call(C.OPS.GROUP_INFO, { chatId: id });
+          await globalThis.OrbitaGroupLists.resolveHidden([info], { onProgress: ({ done, total }) => total && (prog.textContent = `${i + 1} de ${ids.length} · números ocultos ${done}/${total}…`) });
+          const r = await globalThis.OrbitaGroupLists.save(info);
           made++;
           people += r.added;
         } catch (e) {

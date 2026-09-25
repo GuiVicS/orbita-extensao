@@ -48,6 +48,7 @@
     CORRECT: "text.correct", // corretor: ortografia e gramática do texto antes de enviar
     GROUP_LIST: "group.list", // todos os grupos da conta
     GROUP_INFO: "group.info", // participantes (nome, número, admin) de um grupo
+    GROUP_RESOLVE: "group.resolvePhone", // número de um participante oculto (@lid), um por vez
   };
 
   // Módulo ligado/desligado em Opções → Módulos (padrão: ligado).
@@ -127,6 +128,7 @@
     SEND_FILE: "sendFile", // envia o anexo remontado com os pedaços
     LIST_GROUPS: "listGroups",
     GROUP_INFO: "groupInfo",
+    RESOLVE_PHONE: "resolvePhone",
   };
 
   // O WhatsApp só deixa "apagar para todos" as suas mensagens, até cerca de

@@ -609,7 +609,9 @@
 
   // ------------------------------------------------------ pedidos do painel
   async function handle(req) {
-    if (req.op !== C.OPS.STATUS && !(await C.moduleEnabled())) throw new Error("As Conversas estão desligadas em Opções → Módulos.");
+    // ler grupos (importar contatos no painel) funciona mesmo com as Conversas desligadas
+    const readOnly = [C.OPS.STATUS, C.OPS.GROUP_LIST, C.OPS.GROUP_INFO, C.OPS.GROUP_RESOLVE].includes(req.op);
+    if (!readOnly && !(await C.moduleEnabled())) throw new Error("As Conversas estão desligadas em Opções → Módulos.");
     switch (req.op) {
       case C.OPS.STATUS:
         // ops: o painel confere se este service worker conhece tudo o que ele pede
@@ -683,6 +685,12 @@
       case C.OPS.GROUP_LIST: {
         const groups = await exec({ op: C.TAB_CMDS.LIST_GROUPS }, 90000);
         return groups.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+      }
+
+      case C.OPS.GROUP_RESOLVE: {
+        const id = String(req.id || "");
+        if (!/^[\w.-]+@(lid|c\.us)$/.test(id)) throw new Error("Participante inválido.");
+        return exec({ op: C.TAB_CMDS.RESOLVE_PHONE, id }, 20000);
       }
 
       case C.OPS.GROUP_INFO: {

@@ -247,6 +247,27 @@
         if (!list.length) list = ((await chat.list({})) ?? []).filter((c) => isGroup(ser(get(c, "id"))));
         return list.map(serializeChat).filter((c) => c?.isGroup);
       }
+      case "resolvePhone": {
+        // Número de um participante oculto (@lid), um por vez — o mesmo que o
+        // WhatsApp Web busca quando você clica no contato. Pode não existir:
+        // quem esconde o número pela privacidade continua oculto.
+        const id = String(cmd.id || "");
+        const pn = (w) => ser(w).match(PHONE)?.[1] || null;
+        let phone = phoneOf(id, contactOf(id)) || null;
+        if (!phone) {
+          try {
+            phone = pn(get(await WPP().contact.getPnLidEntry?.(id), "phoneNumber"));
+          } catch {}
+        }
+        if (!phone) {
+          try {
+            const W = WPP().whatsapp;
+            phone = pn(W?.LidUtils?.getPhoneNumber?.(W?.WidFactory?.createWid?.(id) ?? id));
+          } catch {}
+        }
+        if (!phone) phone = phoneOf(id, contactOf(id)) || null; // o contato pode ter sido preenchido pela consulta
+        return { id, phone };
+      }
       case "groupInfo": {
         // participantes com nome e número; @lid sem número conhecido conta como oculto
         const gid = cmd.chatId;

@@ -89,5 +89,50 @@
     return res;
   }
 
-  globalThis.OrbitaGroupLists = { save, listFor, contactsOf, defaultName, SOURCE };
+  // Vários grupos numa lista só (nova a cada vez), sem números repetidos.
+  // {{grupo}} fica com o primeiro grupo em que a pessoa aparece.
+  async function saveMerged(infos, { name } = {}) {
+    const seen = new Set();
+    const contacts = [];
+    let hidden = 0;
+    for (const info of infos) {
+      const r = contactsOf(info);
+      hidden += r.hidden;
+      for (const c of r.contacts) if (!seen.has(c.phone)) (seen.add(c.phone), contacts.push(c));
+    }
+    const now = Date.now();
+    const list = { id: uuid(), name: String(name || "").trim() || "Grupos do WhatsApp", source: SOURCE, groupIds: infos.map((i) => i.chatId), defaultCountry: "55", variableKeys: ["grupo", "admin"], count: contacts.length, createdAt: now, updatedAt: now };
+    await withDb(async (db) => {
+      const tx = db.transaction(["lists", "listContacts"], "readwrite");
+      contacts.forEach((c, i) => tx.objectStore("listContacts").put({ id: `${list.id}:${c.phone}`, listId: list.id, phone: c.phone, name: c.name, vars: c.vars, order: i }));
+      tx.objectStore("lists").put(list);
+      await done(tx);
+    });
+    notify("lists", list.id);
+    return { listId: list.id, name: list.name, created: true, added: contacts.length, total: contacts.length, hidden };
+  }
+
+  // Busca, um por um, o número dos participantes que vieram ocultos (@lid).
+  // Com pausa entre as consultas, como quem clica contato por contato.
+  // onProgress({ done, total, found })
+  async function resolveHidden(infos, { onProgress = () => {}, pauseMs = 250 } = {}) {
+    const hidden = [];
+    for (const info of infos) for (const p of info.participants || []) if (!p.isMe && !p.phone) hidden.push(p);
+    let found = 0;
+    for (const [i, p] of hidden.entries()) {
+      onProgress({ done: i, total: hidden.length, found });
+      try {
+        const r = await chrome.runtime.sendMessage({ channel: "orbita:chat", op: "group.resolvePhone", id: p.id });
+        if (r?.ok && r.data?.phone) {
+          p.phone = r.data.phone;
+          found++;
+        }
+      } catch {}
+      if (pauseMs && i < hidden.length - 1) await new Promise((res) => setTimeout(res, pauseMs));
+    }
+    onProgress({ done: hidden.length, total: hidden.length, found });
+    return { total: hidden.length, found };
+  }
+
+  globalThis.OrbitaGroupLists = { save, saveMerged, resolveHidden, listFor, contactsOf, defaultName, SOURCE };
 })();
