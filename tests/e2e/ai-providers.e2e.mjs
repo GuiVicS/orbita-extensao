@@ -57,6 +57,40 @@ console.log("variação:", calls, "|", await p.locator("#testOut").innerText());
 assert.equal(calls.at(-1).url, "https://opencode.ai/zen/v1/chat/completions");
 assert.equal(calls.at(-1).model, "nemotron-3-ultra-free");
 assert.equal(calls.at(-1).auth, "Bearer sk-oc");
+// seção "OpenCode Zen (Nemotron)": testar a chave e salvar sem mexer no provedor principal
+const p2 = await ctx.newPage();
+p2.on("pageerror", (e) => errors.push(e.message));
+await p2.addInitScript(() => {
+  const real = window.fetch.bind(window);
+  window.fetch = async (url, init = {}) => {
+    if (!String(url).startsWith("https://opencode.ai/")) return real(url, init);
+    const key = init.headers?.Authorization;
+    return new Response(JSON.stringify(key === "Bearer sk-bom" ? { choices: [{ message: { content: "ok" } }] } : { error: "unauthorized" }), { status: key === "Bearer sk-bom" ? 200 : 401 });
+  };
+});
+await p2.goto(`chrome-extension://${id}/options.html`);
+assert.equal(await p2.inputValue("#ocKey"), "sk-oc"); // a mesma chave do provedor OpenCode
+await p2.fill("#ocKey", "sk-ruim");
+await p2.click("#ocTest");
+await p2.waitForSelector('#ocStatus.err:has-text("inválida")');
+await p2.fill("#ocKey", "sk-bom");
+await p2.click("#ocTest");
+await p2.waitForSelector('#ocStatus.ok:has-text("respondeu")');
+await p2.check("#ocSummary");
+await p2.click("#ocSave");
+await p2.waitForSelector("#ocStatus.ok");
+ai = await p2.evaluate(async () => (await chrome.storage.local.get(["orbita:ai", "orbita:summary:ai"])));
+console.log("depois da seção OpenCode:", ai["orbita:ai"].provider, ai["orbita:ai"].keys, ai["orbita:summary:ai"]);
+assert.equal(ai["orbita:ai"].provider, "opencode");
+assert.equal(ai["orbita:ai"].keys.opencode, "sk-bom");
+assert.equal(ai["orbita:ai"].keys.groq, "gsk_x");
+assert.equal(ai["orbita:summary:ai"].engine, "opencode");
+// salvar a seção principal de IA depois não apaga a chave nova do OpenCode
+await p2.selectOption("#provider", "groq");
+await p2.click("#save");
+await p2.waitForSelector("#saveStatus.ok");
+ai = await p2.evaluate(async () => (await chrome.storage.local.get("orbita:ai"))["orbita:ai"]);
+assert.deepEqual([ai.provider, ai.keys.opencode], ["groq", "sk-bom"]);
 console.log("ERRORS", errors);
 assert.equal(errors.length, 0);
 await ctx.close();

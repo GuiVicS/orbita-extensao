@@ -107,6 +107,7 @@
   // ------------------------------------------------------------ gerar
   async function generate() {
     if (S.running) return;
+    if (S.ai.engine === "opencode" && !String(S.global.keys?.opencode || "").trim()) return toast("Falta a chave do OpenCode: configure em Opções → OpenCode Zen (Nemotron).", "err");
     const since = sinceFor(S.period);
     const until = Date.now();
     Object.assign(S, { running: true, cancel: false, progress: { done: 0, total: 0, label: "Buscando conversas com mensagens novas…" } });
@@ -245,10 +246,9 @@
         <label class="field" style="max-width:420px"><span>IA do resumo</span><select class="in" data-a="ai" ${S.running ? "disabled" : ""}>
           <option value="default" ${oc ? "" : "selected"}>Mesma das Opções (${esc(gName)})</option>
           <option value="opencode" ${oc ? "selected" : ""}>OpenCode Zen · nemotron-3-ultra-free (gratuito)</option></select></label>
-        ${oc ? `<label class="field" style="max-width:320px"><span>Chave do OpenCode ${hasKey ? "(salva)" : ""}</span><input class="in" type="password" data-a="ockey" placeholder="${hasKey ? "••••••••  (cole outra para trocar)" : "sk-… de opencode.ai/auth"}" autocomplete="off" spellcheck="false"></label>
-          <button class="btn" data-a="ocsave">Salvar chave</button>` : ""}
+        <button class="btn" data-a="opts">Opções de IA</button>
       </div>
-      ${oc ? `<p class="muted small" style="margin:0">${hasKey ? "" : "<b>Falta a chave do OpenCode.</b> "}O Nemotron gratuito é um endpoint de teste da NVIDIA, com termos próprios de uso de dados — as conversas do período são enviadas para ele.</p>` : ""}
+      ${oc ? `<p class="${hasKey ? "muted " : ""}small" style="margin:0">${hasKey ? `Chave do OpenCode configurada · modelo ${esc(g.models?.opencode || "nemotron-3-ultra-free")}.` : `<b class="err">Falta a chave do OpenCode.</b> Configure em Opções → OpenCode Zen (Nemotron).`} O Nemotron gratuito é um endpoint de teste da NVIDIA, com termos próprios de uso de dados — as conversas do período são enviadas para ele.</p>` : ""}
       ${txHtml()}`;
   }
 
@@ -347,16 +347,8 @@
         await set(K.resolved, (S.resolved = {}));
         toast("Resumos apagados.", "ok");
         return render();
-      case "ocsave": {
-        const key = app.querySelector('[data-a="ockey"]')?.value.trim();
-        if (!key) return toast("Cole a chave do OpenCode.", "err");
-        const ai = (await get("orbita:ai", {})) || {};
-        const next = { ...ai, keys: { ...(ai.keys || {}), opencode: key }, models: { ...(ai.models || {}), opencode: ai.models?.opencode || "nemotron-3-ultra-free" } };
-        await set("orbita:ai", next);
-        S.global = next;
-        toast("Chave do OpenCode salva.", "ok");
-        return render();
-      }
+      case "opts":
+        return chrome.runtime.openOptionsPage();
     }
   });
   app.addEventListener("change", async (e) => {
@@ -376,7 +368,12 @@
 
   (async () => {
     [S.last, S.history, S.excluded, S.resolved, S.ai, S.global] = await Promise.all([get(K.last, 0), get(K.history, []), get(K.excluded, []), get(K.resolved, {}), get(K.ai, { engine: "default" }), get("orbita:ai", {})]);
-    chrome.storage.onChanged.addListener((ch, area) => area === "local" && ch["orbita:ai"] && ((S.global = ch["orbita:ai"].newValue || {}), S.running || render()));
+    chrome.storage.onChanged.addListener((ch, area) => {
+      if (area !== "local" || S.running) return;
+      if (ch["orbita:ai"]) S.global = ch["orbita:ai"].newValue || {};
+      if (ch[K.ai]) S.ai = ch[K.ai].newValue || { engine: "default" };
+      if (ch["orbita:ai"] || ch[K.ai]) render();
+    });
     S.current = S.history[0] || null;
     render();
     if (params.has("gerar")) generate(); // veio do botão da Visão geral

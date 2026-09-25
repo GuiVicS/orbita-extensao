@@ -7,7 +7,7 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 ## Novidades da 1.20.0
 
 - **OpenCode Zen como provedor de IA** (Opções → Variações com IA → **OpenCode Zen (Nemotron gratuito)**): chave de opencode.ai/auth e o modelo `nemotron-3-ultra-free` já sugerido. Opcional para tudo que usa IA — tradução, corretor, variações das campanhas, assistente do CRM e resumo.
-- **IA do resumo separada**: na página do Resumo, escolha **“Mesma das Opções”** ou **“OpenCode Zen · nemotron-3-ultra-free”** (com a chave ali mesmo). Dá para resumir com o Nemotron gratuito e manter outro provedor no resto.
+- **IA do resumo separada**: em **Opções → OpenCode Zen (Nemotron)** fica a chave do OpenCode (com **Testar**), o modelo (padrão `nemotron-3-ultra-free`) e **“Usar no Resumo do WhatsApp”**; a mesma escolha aparece na página do Resumo (“Mesma das Opções” / “OpenCode Zen”). Dá para resumir com o Nemotron gratuito e manter outro provedor no resto. A chave é a mesma usada quando o OpenCode é o provedor principal.
 - **Resumo transcreve os áudios que faltam** (opção ligada por padrão, na página do Resumo): antes de resumir, os áudios do período sem transcrição — até 1, 3, **5** (padrão), 10 ou 15 min — são transcritos pelo Whisper (chave da **Groq** ou da **OpenAI** em Opções → Variações com IA; o Nemotron não transcreve áudio). A transcrição fica salva e não é refeita; os mais longos continuam em “Ficou de fora”.
 - **Apagar resumo**: “Apagar este resumo” e “Apagar todos”, com confirmação. As conversas não são apagadas, e o próximo “desde o último resumo” continua de onde parou.
 - Corrigido: salvar as Opções de IA apagava as chaves dos outros provedores; agora cada provedor guarda a sua.

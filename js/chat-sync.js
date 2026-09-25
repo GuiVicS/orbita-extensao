@@ -577,7 +577,7 @@
   // IA do resumo: a mesma das Opções ou o OpenCode Zen (Nemotron), escolhida na página do Resumo.
   async function summaryAi() {
     const cfg = (await chrome.storage.local.get("orbita:summary:ai"))["orbita:summary:ai"] || {};
-    if (cfg.engine === "opencode") return (prompt) => T.completeWith({ provider: "opencode", model: cfg.model || "nemotron-3-ultra-free" }, prompt);
+    if (cfg.engine === "opencode") return (prompt) => T.completeWith({ provider: "opencode", model: cfg.model || undefined }, prompt); // modelo: o das Opções (padrão: Nemotron)
     return T.complete;
   }
 

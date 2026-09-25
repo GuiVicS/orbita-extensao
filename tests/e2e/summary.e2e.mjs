@@ -115,12 +115,21 @@ console.log("aberta na mensagem:", await conv.locator(".b.flash").innerText());
 assert.match(await conv.locator(".b.flash").innerText(), /Hi, I saw your ad/);
 
 // ---- IA do resumo: OpenCode Zen (Nemotron), sem mudar o provedor principal (OpenAI)
+// a chave fica nas Opções (seção "OpenCode Zen (Nemotron)"), com "Usar no Resumo"
 await dash.goto(`chrome-extension://${id}/dashboard.html#/resumo`);
 const f2 = dash.frameLocator('iframe[title="Resumo do WhatsApp"]');
 await f2.locator('select[data-a="ai"]').selectOption("opencode");
-await f2.locator('[data-a="ockey"]').fill("sk-opencode");
-await f2.locator('[data-a="ocsave"]').click();
-await f2.locator('label:has-text("Chave do OpenCode (salva)")').waitFor();
+await f2.locator('text=Falta a chave do OpenCode').waitFor();
+const opt = await ctx.newPage();
+await opt.goto(`chrome-extension://${id}/options.html`);
+assert.equal(await opt.isChecked("#ocSummary"), true, "a escolha feita no Resumo aparece nas Opções");
+assert.equal(await opt.inputValue("#ocModel"), "nemotron-3-ultra-free");
+await opt.fill("#ocKey", "sk-opencode");
+await opt.click("#ocSave");
+await opt.waitForSelector('#ocStatus.ok:has-text("O Resumo vai usar o OpenCode")');
+await opt.close();
+await dash.bringToFront();
+await f2.locator('text=Chave do OpenCode configurada').waitFor();
 await f2.locator('select[data-a="period"]').selectOption("24h");
 await sw.evaluate(() => (globalThis.__ai = []));
 await f2.locator('[data-a="gen"]').click();
