@@ -107,7 +107,10 @@
   // ------------------------------------------------------------ gerar
   async function generate() {
     if (S.running) return;
-    if (S.ai.engine === "opencode" && !String(S.global.keys?.opencode || "").trim()) return toast("Falta a chave do OpenCode: configure em Opções → OpenCode Zen (Nemotron).", "err");
+    if (S.ai.engine === "nemotron" || S.ai.engine === "opencode") {
+      const prov = S.ai.provider || (S.ai.engine === "opencode" ? "opencode" : "openrouter");
+      if (!String(S.global.keys?.[prov] || "").trim()) return toast(`Falta a chave do ${AI_LABELS[prov] || prov}: configure em Opções → Nemotron (NVIDIA).`, "err");
+    }
     const since = sinceFor(S.period);
     const until = Date.now();
     Object.assign(S, { running: true, cancel: false, progress: { done: 0, total: 0, label: "Buscando conversas com mensagens novas…" } });
@@ -240,15 +243,17 @@
   function aiHtml() {
     const g = S.global;
     const gName = g.provider ? `${AI_LABELS[g.provider] || g.provider}${g.models?.[g.provider] ? ` · ${g.models[g.provider]}` : ""}` : "não configurada";
-    const oc = S.ai.engine === "opencode";
-    const hasKey = Boolean(String(g.keys?.opencode || "").trim());
+    const oc = S.ai.engine === "nemotron" || S.ai.engine === "opencode";
+    const nmProv = S.ai.provider || (S.ai.engine === "opencode" ? "opencode" : "openrouter");
+    const nmModel = S.ai.model || (nmProv === "openrouter" ? "nvidia/nemotron-3-ultra-550b-a55b:free" : g.models?.opencode || "nemotron-3-ultra-free");
+    const hasKey = Boolean(String(g.keys?.[nmProv] || "").trim());
     return `<div class="row" style="align-items:flex-end">
         <label class="field" style="max-width:420px"><span>IA do resumo</span><select class="in" data-a="ai" ${S.running ? "disabled" : ""}>
           <option value="default" ${oc ? "" : "selected"}>Mesma das Opções (${esc(gName)})</option>
-          <option value="opencode" ${oc ? "selected" : ""}>OpenCode Zen · nemotron-3-ultra-free (gratuito)</option></select></label>
+          <option value="nemotron" ${oc ? "selected" : ""}>Nemotron · ${esc(AI_LABELS[nmProv] || nmProv)}${nmProv === "openrouter" && /:free$/.test(nmModel) ? " (grátis)" : ""}</option></select></label>
         <button class="btn" data-a="opts">Opções de IA</button>
       </div>
-      ${oc ? `<p class="${hasKey ? "muted " : ""}small" style="margin:0">${hasKey ? `Chave do OpenCode configurada · modelo ${esc(g.models?.opencode || "nemotron-3-ultra-free")}.` : `<b class="err">Falta a chave do OpenCode.</b> Configure em Opções → OpenCode Zen (Nemotron).`} O Nemotron gratuito é um endpoint de teste da NVIDIA, com termos próprios de uso de dados — as conversas do período são enviadas para ele.</p>` : ""}
+      ${oc ? `<p class="${hasKey ? "muted " : ""}small" style="margin:0">${hasKey ? `${esc(AI_LABELS[nmProv] || nmProv)} configurado · modelo ${esc(nmModel)}.` : `<b class="err">Falta a chave do ${esc(AI_LABELS[nmProv] || nmProv)}.</b> Configure em Opções → Nemotron (NVIDIA).`} Modelos gratuitos têm limite diário de pedidos e termos próprios de uso de dados — as conversas do período são enviadas para o provedor.</p>` : ""}
       ${txHtml()}`;
   }
 

@@ -182,13 +182,30 @@
     }
   }
 
+  // mensagem que o provedor mandou (OpenAI: error.message; OpenCode: error.message; outros: message/detail)
+  function providerMessage(bodyText) {
+    try {
+      const j = JSON.parse(bodyText);
+      return String(j?.error?.message || j?.message || j?.detail?.message || j?.detail || "").slice(0, 200);
+    } catch {
+      return "";
+    }
+  }
+
   function httpError(status, label, bodyText) {
-    if (status === 401 || status === 403) return new TranslateError(E.AUTH, `Chave do ${label} inválida ou sem permissão.`);
+    if (/free tier can only be used from within OpenCode|FreeTierError/i.test(bodyText || ""))
+      return new TranslateError(E.AUTH, "O plano gratuito do OpenCode só funciona dentro do app OpenCode, não em outros programas. Use o Nemotron gratuito pelo OpenRouter (Opções → Nemotron) ou um modelo pago do OpenCode.");
+    if (status === 401) return new TranslateError(E.AUTH, `Chave do ${label} inválida.`);
+    if (status === 403) {
+      const m = providerMessage(bodyText);
+      return new TranslateError(E.AUTH, `O ${label} recusou o acesso${m ? `: ${m}` : " (a chave não tem permissão para este modelo)"}.`);
+    }
     if (status === 429) return new TranslateError(E.RATE_LIMIT, `Limite de uso do ${label} atingido. Tente de novo em instantes.`, { retryable: true });
     if (status === 404 || (status === 400 && /model/i.test(bodyText) && /(not.?found|does not exist|decommission|deprecat|invalid)/i.test(bodyText)))
       return new TranslateError(E.MODEL_GONE, `O modelo configurado não está disponível no ${label}.`);
     if (status === 529 || status >= 500) return new TranslateError(E.PROVIDER, `O ${label} está instável (HTTP ${status}).`, { retryable: true });
-    return new TranslateError(E.PROVIDER, `O ${label} recusou o pedido (HTTP ${status}).`);
+    const m = providerMessage(bodyText);
+    return new TranslateError(E.PROVIDER, `O ${label} recusou o pedido (HTTP ${status})${m ? `: ${m}` : "."}`);
   }
 
   async function listModels(cfg) {

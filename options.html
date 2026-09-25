@@ -42,7 +42,7 @@
       <option value=anthropic>Anthropic (Claude)</option>
       <option value=gemini>Google (Gemini)</option>
       <option value=openrouter>OpenRouter</option>
-      <option value=opencode>OpenCode Zen (Nemotron gratuito)</option>
+      <option value=opencode>OpenCode Zen</option>
       <option value=custom>Compatível com OpenAI (Ollama, LM Studio ou servidor próprio)</option>
     </select>
 
@@ -81,17 +81,23 @@
   </section>
 
 
-  <section id=opencodeSec>
-    <h2>OpenCode Zen (Nemotron)</h2>
-    <p class=hint style="margin:0 0 6px">Chave do <a href="https://opencode.ai/auth" target=_blank rel=noopener>OpenCode Zen</a> para usar o modelo gratuito <b>nemotron-3-ultra-free</b> — no <b>Resumo do WhatsApp</b> (opção abaixo) e, se quiser, em tudo (escolha “OpenCode Zen” como provedor em “Variações com IA”, acima).</p>
-    <label for=ocKey>Chave da API do OpenCode</label>
-    <div class=row><input type=password id=ocKey placeholder="sk-…" autocomplete=off spellcheck=false><button type=button id=ocToggle>Mostrar</button><button type=button id=ocTest>Testar</button></div>
-    <label for=ocModel>Modelo</label>
-    <input type=text id=ocModel list=ocModels placeholder=nemotron-3-ultra-free spellcheck=false>
-    <datalist id=ocModels><option value=nemotron-3-ultra-free><option value=nemotron-3.5-lightning-free><option value=big-pickle></datalist>
-    <label class="inline sub" style="margin-top:12px"><input type=checkbox id=ocSummary> Usar no Resumo do WhatsApp (o resto continua com o provedor de “Variações com IA”)</label>
-    <p class=hint>A chave fica só neste navegador e <b>não entra no backup</b>. Os modelos Nemotron gratuitos são endpoints de teste da NVIDIA, com termos próprios de uso de dados — as mensagens enviadas para resumir passam por eles.</p>
-    <div class=actions><button type=button class=primary id=ocSave>Salvar</button><span class=status id=ocStatus></span></div>
+  <section id=nemotronSec>
+    <h2>Nemotron (NVIDIA)</h2>
+    <p class=hint style="margin:0 0 6px">O modelo <b>Nemotron 3 Ultra</b> para o <b>Resumo do WhatsApp</b> (opção abaixo). O resto continua com o provedor de “Variações com IA”, acima.</p>
+    <label for=nmProvider>Por onde usar</label>
+    <select id=nmProvider>
+      <option value=openrouter>OpenRouter — grátis (recomendado)</option>
+      <option value=opencode>OpenCode Zen</option>
+    </select>
+    <p class=hint id=nmHelp></p>
+    <label for=nmKey id=nmKeyLabel>Chave da API</label>
+    <div class=row><input type=password id=nmKey autocomplete=off spellcheck=false><button type=button id=nmToggle>Mostrar</button><button type=button id=nmTest>Testar</button></div>
+    <label for=nmModel>Modelo</label>
+    <input type=text id=nmModel list=nmModels spellcheck=false>
+    <datalist id=nmModels></datalist>
+    <label class="inline sub" style="margin-top:12px"><input type=checkbox id=nmSummary> Usar no Resumo do WhatsApp</label>
+    <p class=hint>A chave fica só neste navegador e <b>não entra no backup</b>. Modelos gratuitos têm limite de pedidos por dia e termos próprios de uso de dados — as mensagens enviadas para resumir passam pelo provedor.</p>
+    <div class=actions><button type=button class=primary id=nmSave>Salvar</button><span class=status id=nmStatus></span></div>
   </section>
 
   <section id=conversas>
@@ -231,7 +237,7 @@
 <script src=js/email-common.js></script>
 <script src=js/email-options.js></script>
 <script src=js/ia-options.js></script>
-<script src=js/opencode-options.js></script>
+<script src=js/nemotron-options.js></script>
 <script src=js/chat-common.js></script>
 <script src=js/chat-translate.js></script>
 <script src=js/chat-voice.js></script>

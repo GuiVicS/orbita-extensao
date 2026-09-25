@@ -114,31 +114,32 @@ await conv.locator(".b.flash").waitFor({ timeout: 20000 });
 console.log("aberta na mensagem:", await conv.locator(".b.flash").innerText());
 assert.match(await conv.locator(".b.flash").innerText(), /Hi, I saw your ad/);
 
-// ---- IA do resumo: OpenCode Zen (Nemotron), sem mudar o provedor principal (OpenAI)
-// a chave fica nas Opções (seção "OpenCode Zen (Nemotron)"), com "Usar no Resumo"
+// ---- IA do resumo: Nemotron grátis pelo OpenRouter, sem mudar o provedor principal (OpenAI)
+// a chave fica nas Opções (seção "Nemotron (NVIDIA)"), com "Usar no Resumo"
 await dash.goto(`chrome-extension://${id}/dashboard.html#/resumo`);
 const f2 = dash.frameLocator('iframe[title="Resumo do WhatsApp"]');
-await f2.locator('select[data-a="ai"]').selectOption("opencode");
-await f2.locator('text=Falta a chave do OpenCode').waitFor();
+await f2.locator('select[data-a="ai"]').selectOption("nemotron");
+await f2.locator('text=Falta a chave do OpenRouter').waitFor();
 const opt = await ctx.newPage();
 await opt.goto(`chrome-extension://${id}/options.html`);
-assert.equal(await opt.isChecked("#ocSummary"), true, "a escolha feita no Resumo aparece nas Opções");
-assert.equal(await opt.inputValue("#ocModel"), "nemotron-3-ultra-free");
-await opt.fill("#ocKey", "sk-opencode");
-await opt.click("#ocSave");
-await opt.waitForSelector('#ocStatus.ok:has-text("O Resumo vai usar o OpenCode")');
+assert.equal(await opt.isChecked("#nmSummary"), true, "a escolha feita no Resumo aparece nas Opções");
+assert.equal(await opt.inputValue("#nmProvider"), "openrouter");
+assert.equal(await opt.inputValue("#nmModel"), "nvidia/nemotron-3-ultra-550b-a55b:free");
+await opt.fill("#nmKey", "sk-or-teste");
+await opt.click("#nmSave");
+await opt.waitForSelector('#nmStatus.ok:has-text("O Resumo vai usar o Nemotron")');
 await opt.close();
 await dash.bringToFront();
-await f2.locator('text=Chave do OpenCode configurada').waitFor();
+await f2.locator('text=OpenRouter configurado').waitFor();
 await f2.locator('select[data-a="period"]').selectOption("24h");
 await sw.evaluate(() => (globalThis.__ai = []));
 await f2.locator('[data-a="gen"]').click();
 await f2.locator('[data-a="gen"]:has-text("Gerar resumo")').waitFor({ timeout: 60000 });
 const used = await sw.evaluate(() => globalThis.__ai.filter((c) => /chat\/completions/.test(c.url)));
 console.log("IA do resumo:", [...new Set(used.map((c) => `${c.url} · ${c.model} · ${c.auth}`))]);
-assert.ok(used.length && used.every((c) => c.url === "https://opencode.ai/zen/v1/chat/completions" && c.model === "nemotron-3-ultra-free" && c.auth === "Bearer sk-opencode"));
+assert.ok(used.length && used.every((c) => c.url === "https://openrouter.ai/api/v1/chat/completions" && c.model === "nvidia/nemotron-3-ultra-550b-a55b:free" && c.auth === "Bearer sk-or-teste"));
 const ai = await dash.evaluate(async () => (await chrome.storage.local.get("orbita:ai"))["orbita:ai"]);
-assert.deepEqual([ai.provider, ai.keys.openai, ai.keys.opencode], ["openai", "sk-test", "sk-opencode"]);
+assert.deepEqual([ai.provider, ai.keys.openai, ai.keys.openrouter], ["openai", "sk-test", "sk-or-teste"]);
 
 // ---- apagar um resumo e apagar todos
 const nHist = await dash.evaluate(async () => (await chrome.storage.local.get("orbita:summary:history"))["orbita:summary:history"].length);

@@ -57,40 +57,52 @@ console.log("variação:", calls, "|", await p.locator("#testOut").innerText());
 assert.equal(calls.at(-1).url, "https://opencode.ai/zen/v1/chat/completions");
 assert.equal(calls.at(-1).model, "nemotron-3-ultra-free");
 assert.equal(calls.at(-1).auth, "Bearer sk-oc");
-// seção "OpenCode Zen (Nemotron)": testar a chave e salvar sem mexer no provedor principal
+// seção "Nemotron (NVIDIA)": OpenRouter grátis (padrão) ou OpenCode; Testar mostra o motivo real
 const p2 = await ctx.newPage();
 p2.on("pageerror", (e) => errors.push(e.message));
 await p2.addInitScript(() => {
   const real = window.fetch.bind(window);
   window.fetch = async (url, init = {}) => {
-    if (!String(url).startsWith("https://opencode.ai/")) return real(url, init);
-    const key = init.headers?.Authorization;
-    return new Response(JSON.stringify(key === "Bearer sk-bom" ? { choices: [{ message: { content: "ok" } }] } : { error: "unauthorized" }), { status: key === "Bearer sk-bom" ? 200 : 401 });
+    const u = String(url);
+    if (u.startsWith("https://opencode.ai/")) return new Response(JSON.stringify({ type: "error", error: { type: "FreeTierError", message: "OpenCode's free tier can only be used from within OpenCode" } }), { status: 403 });
+    if (u.startsWith("https://openrouter.ai/")) {
+      const ok = init.headers?.Authorization === "Bearer sk-or-bom" && JSON.parse(init.body).model === "nvidia/nemotron-3-ultra-550b-a55b:free";
+      return new Response(JSON.stringify(ok ? { choices: [{ message: { content: "ok" } }] } : { error: { message: "No auth credentials found" } }), { status: ok ? 200 : 401 });
+    }
+    return real(url, init);
   };
 });
 await p2.goto(`chrome-extension://${id}/options.html`);
-assert.equal(await p2.inputValue("#ocKey"), "sk-oc"); // a mesma chave do provedor OpenCode
-await p2.fill("#ocKey", "sk-ruim");
-await p2.click("#ocTest");
-await p2.waitForSelector('#ocStatus.err:has-text("inválida")');
-await p2.fill("#ocKey", "sk-bom");
-await p2.click("#ocTest");
-await p2.waitForSelector('#ocStatus.ok:has-text("respondeu")');
-await p2.check("#ocSummary");
-await p2.click("#ocSave");
-await p2.waitForSelector("#ocStatus.ok");
+assert.equal(await p2.inputValue("#nmProvider"), "openrouter");
+assert.equal(await p2.inputValue("#nmModel"), "nvidia/nemotron-3-ultra-550b-a55b:free");
+// OpenCode: a mesma chave do provedor principal aparece; o Testar explica a restrição do plano gratuito
+await p2.selectOption("#nmProvider", "opencode");
+assert.equal(await p2.inputValue("#nmKey"), "sk-oc");
+assert.equal(await p2.inputValue("#nmModel"), "nemotron-3-ultra-free");
+await p2.click("#nmTest");
+await p2.waitForSelector('#nmStatus.err:has-text("só funciona dentro do app OpenCode")');
+// OpenRouter: chave ruim → inválida; chave boa → funcionando
+await p2.selectOption("#nmProvider", "openrouter");
+await p2.fill("#nmKey", "sk-or-ruim");
+await p2.click("#nmTest");
+await p2.waitForSelector('#nmStatus.err:has-text("inválida")');
+await p2.fill("#nmKey", "sk-or-bom");
+await p2.click("#nmTest");
+await p2.waitForSelector('#nmStatus.ok:has-text("respondeu")');
+await p2.check("#nmSummary");
+await p2.click("#nmSave");
+await p2.waitForSelector('#nmStatus.ok:has-text("Resumo vai usar o Nemotron")');
 ai = await p2.evaluate(async () => (await chrome.storage.local.get(["orbita:ai", "orbita:summary:ai"])));
-console.log("depois da seção OpenCode:", ai["orbita:ai"].provider, ai["orbita:ai"].keys, ai["orbita:summary:ai"]);
-assert.equal(ai["orbita:ai"].provider, "opencode");
-assert.equal(ai["orbita:ai"].keys.opencode, "sk-bom");
-assert.equal(ai["orbita:ai"].keys.groq, "gsk_x");
-assert.equal(ai["orbita:summary:ai"].engine, "opencode");
-// salvar a seção principal de IA depois não apaga a chave nova do OpenCode
+console.log("depois da seção Nemotron:", ai["orbita:ai"].provider, ai["orbita:ai"].keys, ai["orbita:summary:ai"]);
+assert.equal(ai["orbita:ai"].provider, "opencode"); // o provedor principal não mudou
+assert.deepEqual([ai["orbita:ai"].keys.openrouter, ai["orbita:ai"].keys.opencode, ai["orbita:ai"].keys.groq], ["sk-or-bom", "sk-oc", "gsk_x"]);
+assert.deepEqual(ai["orbita:summary:ai"], { engine: "nemotron", provider: "openrouter", model: "nvidia/nemotron-3-ultra-550b-a55b:free" });
+// salvar a seção principal de IA depois não apaga a chave do OpenRouter
 await p2.selectOption("#provider", "groq");
 await p2.click("#save");
 await p2.waitForSelector("#saveStatus.ok");
 ai = await p2.evaluate(async () => (await chrome.storage.local.get("orbita:ai"))["orbita:ai"]);
-assert.deepEqual([ai.provider, ai.keys.opencode], ["groq", "sk-bom"]);
+assert.deepEqual([ai.provider, ai.keys.openrouter], ["groq", "sk-or-bom"]);
 console.log("ERRORS", errors);
 assert.equal(errors.length, 0);
 await ctx.close();

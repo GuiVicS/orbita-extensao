@@ -4,6 +4,11 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.20.1
+
+- **Nemotron grátis pelo OpenRouter.** O plano gratuito do OpenCode Zen **só funciona dentro do app OpenCode** (a API responde 403 “FreeTierError” para outros programas). Por isso a seção **Opções → Nemotron (NVIDIA)** agora escolhe **por onde usar**: **OpenRouter — grátis (recomendado)**, com `nvidia/nemotron-3-ultra-550b-a55b:free` (chave em openrouter.ai/keys), ou OpenCode Zen (só com créditos pagos). Tem **Testar**, modelo e **“Usar no Resumo do WhatsApp”**; a chave de cada provedor é a mesma usada quando ele é o principal.
+- **Erros de IA com o motivo real**: em vez de “chave inválida ou sem permissão”, aparece o que o provedor respondeu (ex.: a restrição do plano gratuito do OpenCode).
+
 ## Novidades da 1.20.0
 
 - **OpenCode Zen como provedor de IA** (Opções → Variações com IA → **OpenCode Zen (Nemotron gratuito)**): chave de opencode.ai/auth e o modelo `nemotron-3-ultra-free` já sugerido. Opcional para tudo que usa IA — tradução, corretor, variações das campanhas, assistente do CRM e resumo.

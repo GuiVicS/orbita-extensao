@@ -574,10 +574,14 @@
     return out;
   }
 
-  // IA do resumo: a mesma das Opções ou o OpenCode Zen (Nemotron), escolhida na página do Resumo.
+  // IA do resumo: a mesma das Opções ou o Nemotron (Opções → Nemotron: OpenRouter grátis ou OpenCode Zen).
   async function summaryAi() {
     const cfg = (await chrome.storage.local.get("orbita:summary:ai"))["orbita:summary:ai"] || {};
-    if (cfg.engine === "opencode") return (prompt) => T.completeWith({ provider: "opencode", model: cfg.model || undefined }, prompt); // modelo: o das Opções (padrão: Nemotron)
+    if (cfg.engine === "nemotron" || cfg.engine === "opencode") {
+      const provider = cfg.provider || (cfg.engine === "opencode" ? "opencode" : "openrouter");
+      const model = cfg.model || (provider === "openrouter" ? "nvidia/nemotron-3-ultra-550b-a55b:free" : undefined);
+      return (prompt) => T.completeWith({ provider, model }, prompt);
+    }
     return T.complete;
   }
 

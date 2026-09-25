@@ -174,3 +174,11 @@ test("outra IA só para uma tarefa (resumo): usa a chave do OpenCode sem mudar o
   storage = { "orbita:ai": { provider: "openai", keys: { openai: "sk-openai" } } };
   await assert.rejects(T.completeWith({ provider: "opencode" }, { system: "s", user: "u" }), /chave do OpenCode Zen/);
 });
+
+test("erro do provedor: mostra o motivo real (ex.: plano gratuito do OpenCode só no app)", async () => {
+  storage = { "orbita:ai": { provider: "opencode", keys: { opencode: "oc_sk_x" } } };
+  responder = () => ({ ok: false, status: 403, json: async () => ({}), text: async () => JSON.stringify({ type: "error", error: { type: "FreeTierError", message: "OpenCode's free tier can only be used from within OpenCode" } }) });
+  await assert.rejects(T.correct({ text: "oi" }), (e) => e.code === "AUTH" && /só funciona dentro do app OpenCode/.test(e.message) && /OpenRouter/.test(e.message));
+  responder = () => ({ ok: false, status: 403, json: async () => ({}), text: async () => JSON.stringify({ error: { message: "Model requires credits" } }) });
+  await assert.rejects(T.correct({ text: "oi" }), /recusou o acesso: Model requires credits/);
+});
