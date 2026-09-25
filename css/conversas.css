@@ -510,3 +510,10 @@ body.expanded .msgs { padding-left: 10%; padding-right: 10%; }
 .vopt.main { border-color: color-mix(in oklch, var(--primary) 45%, transparent); background: color-mix(in oklch, var(--primary) 7%, var(--card)); }
 .vopt.main b { color: var(--primary); }
 @media (max-width: 700px) { .vchoose { grid-template-columns: 1fr; } }
+
+/* áudio recebido dublado para o seu idioma (ElevenLabs) */
+.b .dubin { display: grid; gap: 3px; margin-top: 6px; padding-top: 6px; border-top: 1px dashed color-mix(in srgb, var(--wa-meta) 35%, transparent); }
+.b .dubin small { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--wa-meta); }
+.b .dubin small.err { color: var(--destructive); }
+.b .dubin .link { font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+.b .player.sm .play { width: 28px; height: 28px; }

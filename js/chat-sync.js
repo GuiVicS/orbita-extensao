@@ -845,6 +845,42 @@
         return { genId, mp3Key: mediaKey, text: "", textPt: "", lang, maxVoiceSec: settings.maxVoiceSec, engine: "elevenlabs" };
       }
 
+      case C.OPS.DUB_INCOMING: {
+        // Áudio do contato em outro idioma → a mesma fala no seu idioma, na voz dele.
+        // Vai SÓ o áudio: a transcrição (que continua acontecendo) não é enviada.
+        const settings = await C.loadSettings();
+        const id = String(req.messageId || "");
+        const m = await C.getMessage(id);
+        if (!m || m.fromMe || m.type !== "audio" || m.revoked) throw new Error("Só dá para dublar áudios recebidos.");
+        const chat = await C.getChat(m.chatId);
+        const from = m.audio?.transcriptLang || m.lang || chat?.translation?.detectedLang || "auto";
+        if (from === settings.myLang) throw new Error("Este áudio já está no seu idioma.");
+        const d = m.audio?.dub;
+        if (d?.status === "pending" && Date.now() - (d.at || 0) < 10 * 60000) throw new Error("Este áudio já está sendo dublado.");
+        const setDub = async (dub) => {
+          const msg = await C.patchMessage(id, (x) => ({ ...x, audio: { ...x.audio, dub } }));
+          if (msg) broadcast(C.EVENTS.MESSAGE_UPDATED, { message: msg });
+          return msg;
+        };
+        await setDub({ status: "pending", at: Date.now() });
+        try {
+          const r = await globalThis.OrbitaVoice.engine("elevenlabs").generate({
+            audio: b64ToBlob(String(req.data || ""), String(req.mime || "audio/wav")),
+            filename: "audio.wav",
+            sourceLang: globalThis.OrbitaDub.supports(from) ? from : "auto",
+            targetLang: settings.myLang,
+            durationSec: m.audio?.duration || 0,
+            settings,
+            onProgress: (p) => broadcast(C.EVENTS.VOICE_PROGRESS, { messageId: id, ...p }),
+          });
+          await C.putMedia(`dubin:${id}`, r.blob, { chatId: m.chatId });
+          return await setDub({ status: "done", from, lang: settings.myLang, at: Date.now() });
+        } catch (e) {
+          await setDub({ status: "failed", error: e.message, code: e.code, at: Date.now() });
+          throw e;
+        }
+      }
+
       case C.OPS.SEND_AUDIO: {
         // Falha segura: só sai o áudio gerado a partir da aprovação guardada aqui.
         const settings = await C.loadSettings();

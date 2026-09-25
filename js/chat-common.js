@@ -36,6 +36,7 @@
     TRANSCRIBE_DRAFT: "audio.transcribeDraft", // transcreve o que você gravou, para revisar
     VOICE_PREVIEW: "audio.generatePreview", // gera a voz (Fish Audio) do texto aprovado
     VOICE_DUB: "audio.dub", // dubla a gravação (ElevenLabs), áudio → áudio
+    DUB_INCOMING: "audio.dubIncoming", // dubla um áudio recebido para o seu idioma (ElevenLabs), só o áudio
     SEND_AUDIO: "chat.sendAudio", // envia a voz gerada como mensagem de voz
     CRM_CHANGED: "crm.changed", // o CRM foi editado nas Conversas: refaz o vínculo da conversa
     AVATAR: "chat.avatar", // busca/atualiza a foto de perfil da conversa

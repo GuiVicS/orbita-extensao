@@ -452,8 +452,67 @@
       default:
         tx = `<span class="trmeta">${transcribeBtn("Transcrever")}</span>`;
     }
-    const ai = a.generated ? `<span class="aibadge" title="Áudio criado com voz sintética (Fish Audio)">${icon("speaker", 11)} Voz gerada por IA</span>` : "";
-    return `${head}${tx}${m.text ? `<span class="cap">${waFormat(m.text)}</span>` : ""}${ai}`;
+    const ai = a.generated ? `<span class="aibadge" title="${a.engine === "elevenlabs" ? "Áudio dublado pela ElevenLabs" : "Áudio criado com voz sintética (Fish Audio)"}">${icon("speaker", 11)} Voz gerada por IA</span>` : "";
+    return `${head}${tx}${m.text ? `<span class="cap">${waFormat(m.text)}</span>` : ""}${dubBlock(m)}${ai}`;
+  }
+
+  // ---- áudio recebido em outro idioma, dublado para o seu (ElevenLabs): vai só o
+  // áudio para a dublagem; a transcrição continua existindo, mas não é enviada
+  const dubIn = new Set(); // em andamento nesta tela
+  const dubAuto = new Set(); // já tentados automaticamente (uma vez só; depois, pelo botão)
+  const langOfAudio = (m) => m.audio?.transcriptLang || m.lang || S.current?.translation?.detectedLang || null;
+  const foreignAudio = (m) => {
+    const l = langOfAudio(m);
+    return Boolean(l) && l !== S.settings.myLang;
+  };
+  const canDubIn = (m) => !m.fromMe && m.type === "audio" && !m.revoked && S.hasEleven && dubbing() && m.audio?.transcriptStatus !== "empty";
+
+  function dubBlock(m) {
+    if (!canDubIn(m)) return "";
+    const d = m.audio?.dub;
+    const my = esc(langLabel(S.settings.myLang));
+    if (d?.status === "done") {
+      const pid = `dub:${m.id}`;
+      const on = player.id === pid;
+      const btn = on && player.loading ? icon("spinner", 14, 'class="spin"') : icon(on && !player.el.paused ? "pause" : "play", 14);
+      return `<div class="dubin"><div class="player sm" data-player="${esc(pid)}"><button type="button" class="play" data-play="${esc(pid)}" aria-label="Ouvir dublado">${btn}</button><div class="bar"><i style="width:0%"></i></div><span class="dur"></span></div>
+        <small>${icon("speaker", 11)} Em ${my}, dublado com a voz do contato (ElevenLabs)</small></div>`;
+    }
+    if (d?.status === "pending" || dubIn.has(m.id)) return `<div class="dubin"><small>${icon("spinner", 12, 'class="spin"')} Dublando para ${my}…</small></div>`;
+    if (d?.status === "failed") return `<div class="dubin"><small class="err" title="${esc(d.error || "")}">${icon("alert", 12)} Dublagem falhou: ${esc(d.error || "erro")} · <button class="link" data-dubin="${esc(m.id)}">tentar de novo</button></small></div>`;
+    if (!foreignAudio(m) && langOfAudio(m)) return ""; // já está no seu idioma
+    return `<div class="dubin"><small><button class="link" data-dubin="${esc(m.id)}">${icon("speaker", 11)} Ouvir dublado em ${my}</button></small></div>`;
+  }
+
+  async function dubIncoming(id, { manual = false } = {}) {
+    if (dubIn.has(id)) return;
+    dubIn.add(id);
+    renderMessages({ keepScroll: true });
+    try {
+      await call(C.OPS.MEDIA_FETCH, { messageId: id }); // o áudio original do WhatsApp
+      const media = await C.getMedia(id);
+      const wav = await A.toWav(media.blob); // WAV: formato que a ElevenLabs sempre aceita
+      await call(C.OPS.DUB_INCOMING, { messageId: id, data: await blobToB64(wav.blob), mime: "audio/wav" });
+    } catch (e) {
+      if (manual) toast(`Não foi possível dublar: ${e.message}`, "err");
+    } finally {
+      dubIn.delete(id);
+      renderMessages({ keepScroll: true });
+    }
+  }
+
+  // Automático (ElevenLabs principal): áudios recebidos nos últimos 2 dias, já
+  // transcritos (a transcrição diz o idioma), em outro idioma e até a duração
+  // máxima automática. Os mais antigos ou longos ficam com o botão.
+  function autoDubIncoming() {
+    if (!S.hasEleven || !dubbing() || !S.current) return;
+    for (const m of S.messages) {
+      if (!canDubIn(m) || m.audio?.dub || dubIn.has(m.id) || dubAuto.has(m.id) || String(m.id).startsWith("pending-")) continue;
+      if (!["done", "failed"].includes(m.audio?.transcriptStatus)) continue; // espera a transcrição
+      if (!foreignAudio(m) || Date.now() - m.ts > 2 * 864e5 || (m.audio?.duration || 0) > S.settings.maxAudioSec) continue;
+      dubAuto.add(m.id);
+      dubIncoming(m.id);
+    }
   }
 
   // ---- player: um só elemento <audio> para a tela toda
@@ -481,8 +540,9 @@
     Object.assign(player, { id, url: null, loading: true });
     paintPlayer();
     try {
-      await call(C.OPS.MEDIA_FETCH, { messageId: id }); // baixa da aba do WhatsApp se ainda não está no cache
-      const media = await C.getMedia(id);
+      const dubbed = id.startsWith("dub:"); // versão dublada de um áudio recebido
+      if (!dubbed) await call(C.OPS.MEDIA_FETCH, { messageId: id }); // baixa da aba do WhatsApp se ainda não está no cache
+      const media = await C.getMedia(dubbed ? `dubin:${id.slice(4)}` : id);
       if (player.id !== id) return;
       player.url = URL.createObjectURL(media.blob);
       player.el.src = player.url;
@@ -771,6 +831,7 @@
     box.innerHTML = top + S.messages.map((m, i) => bubbleHtml(m, S.messages[i - 1])).join("");
     S.messages.forEach((m) => delete m._new);
     loadStickers();
+    autoDubIncoming();
     if (toBottom) box.scrollTop = box.scrollHeight;
     else if (keepScroll) box.scrollTop = box.scrollHeight - fromBottom; // mantém a posição ao carregar antigas
     observeSentinel();
@@ -989,6 +1050,8 @@
       if (dl) return download(dl.dataset.dl);
       const play = e.target.closest("[data-play]");
       if (play) return togglePlay(play.dataset.play);
+      const dubBtn = e.target.closest("[data-dubin]");
+      if (dubBtn) return dubIncoming(dubBtn.dataset.dubin, { manual: true });
       const tr = e.target.closest("[data-transcribe]");
       if (tr) return call(C.OPS.TRANSCRIBE, { messageId: tr.dataset.transcribe }).catch((err) => toast(err.message, "err"));
       const retry = e.target.closest("[data-retry]");
@@ -2481,7 +2544,7 @@
     chrome.storage.onChanged.addListener((ch, area) => area === "local" && "orbita:chat:secrets" in ch && loadEleven());
     await loadQuickReplies();
     chrome.storage.onChanged.addListener((ch, area) => {
-      if (area === "local" && C.SETTINGS_KEY in ch) C.loadSettings().then((st) => ((S.settings = st), renderHeader(), renderComposer()));
+      if (area === "local" && C.SETTINGS_KEY in ch) C.loadSettings().then((st) => ((S.settings = st), renderHeader(), renderComposer(), renderMessages({ keepScroll: true })));
     });
     await loadStages().catch(() => {});
     try {

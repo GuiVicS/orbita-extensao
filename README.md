@@ -4,6 +4,12 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.15.0
+
+- **Áudio do cliente em outro idioma, dublado para o português (ElevenLabs).** Com a ElevenLabs como opção principal, os áudios recebidos em inglês (ou outro idioma que não o seu) continuam sendo **transcritos, como sempre**, e ganham um segundo player: **“Em português, dublado com a voz do contato”**. Para a ElevenLabs vai **só o áudio** (convertido em WAV) — a transcrição nunca é enviada.
+  - Automático para áudios dos **últimos 2 dias** e até a **duração máxima automática** das preferências (para não gastar créditos com o histórico). Os outros têm o botão **“Ouvir dublado em português”**.
+  - Falhas (sem créditos, chave inválida…) aparecem no próprio balão, com “tentar de novo”. Com o Fish Audio como principal, nada é dublado.
+
 ## Novidades da 1.14.0
 
 - **Conversas: voz traduzida com a dublagem da ElevenLabs (opcional).** Além do fluxo original (a gravação vira texto, é traduzida e o **Fish Audio** gera a voz), agora dá para **dublar a própria gravação**: a ElevenLabs recebe o áudio e devolve a fala já no idioma do contato, **com a sua voz, entonação e ritmo** — sem transcrição nem geração a partir de texto no meio.
@@ -120,7 +126,7 @@ aba do WhatsApp (js/chat-page.js, WA-JS) ⇄ js/chat-content.js ⇄ porta "orbit
 ```sh
 node --test tests/*.test.mjs            # unitários (motor de tradução, transcrição, voz, utilidades)
 npm i -D playwright && npx playwright install chromium
-node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect, stale-worker, sticker, emoji-sticker, groups, dub
+node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect, stale-worker, sticker, emoji-sticker, groups, dub, dub-incoming
 ```
 
 Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web simulado (`tests/e2e/fake-whatsapp.html`) e provedores de IA/voz simulados — nenhuma chave real é usada.
