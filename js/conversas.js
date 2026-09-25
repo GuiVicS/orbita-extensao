@@ -66,6 +66,7 @@
     plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
     smile: '<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/>',
     sticker: '<path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"/><path d="M14 3v4a2 2 0 0 0 2 2h4"/><path d="M8 13h.01"/><path d="M16 13h.01"/><path d="M10 16s.8 1 2 1c1.3 0 2-1 2-1"/>',
+    reply: '<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
     users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
     star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
     spellcheck: '<path d="m6 16 6-12 6 12"/><path d="M8 12h8"/><path d="m16 20 2 2 4-4"/>',
@@ -754,7 +755,8 @@
     const cls = ["b", m.fromMe ? "me" : "", first ? "first" : "", sticker ? "sticker" : "", jumbo ? `jumbo j${jumbo}` : "", m.revoked ? "revoked" : "", m._pending ? "pending" : "", m._new ? "new" : ""].filter(Boolean).join(" ");
     // menu do balão (apagar); não aparece em mensagens ainda sendo enviadas
     const menu = m._pending ? "" : `<button class="bmenu" data-menu="${esc(m.id)}" aria-label="Opções da mensagem" title="Opções">${icon("down", 16)}</button>`;
-    return `${head}<div class="${cls}" data-id="${esc(m.id)}">${menu}${who}${body}${meta}</div>`;
+    const quote = m.quoted && !m.revoked ? quoteHtml(m.quoted, m) : "";
+    return `${head}<div class="${cls}" data-id="${esc(m.id)}">${menu}${who}${quote}${withMentions(body, m)}${meta}</div>`;
   }
 
   // ---- apagar mensagem (para mim / para todos)
@@ -767,7 +769,7 @@
     const box = document.createElement("div");
     box.className = "msgmenu";
     box.setAttribute("role", "menu");
-    box.innerHTML = `<button role="menuitem" data-del="me">${icon("trash", 14)} Apagar para mim</button>
+    box.innerHTML = `${m.revoked ? "" : `<button role="menuitem" data-reply="1">${icon("reply", 14)} Responder</button>`}<button role="menuitem" data-del="me">${icon("trash", 14)} Apagar para mim</button>
       <button role="menuitem" data-del="all" ${revocable ? "" : `disabled title="${esc(why)}"`}>${icon("ban", 14)} Apagar para todos</button>`;
     const r = btn.getBoundingClientRect();
     box.style.top = `${Math.min(window.innerHeight - 110, r.bottom + 4)}px`;
@@ -775,6 +777,10 @@
     document.body.append(box);
     box.querySelector("button:not([disabled])")?.focus();
     box.addEventListener("click", (e) => {
+      if (e.target.closest("[data-reply]")) {
+        closeMsgMenu();
+        return startReply(m);
+      }
       const b = e.target.closest("[data-del]");
       if (!b || b.disabled) return;
       closeMsgMenu();
@@ -943,6 +949,8 @@
     closeAttach();
     clearStickers();
     S.picker?.close();
+    S.reply = null;
+    S.mentionMap = {};
     S.voiceMode = false;
     S.messages = [];
     S.complete = false;
@@ -954,7 +962,8 @@
       <div id="preview"></div>
       <div id="attach"></div>
       <div class="pkbox" id="picker" hidden></div>
-      <div class="emsug" id="emsug" hidden role="listbox" aria-label="Sugestões de emoji"></div>
+      <div class="emsug" id="emsug" hidden role="listbox" aria-label="Sugestões"></div>
+      <div class="replybar" id="replybar" hidden></div>
       <div class="dropzone" id="dropzone" hidden><div>${icon("clip", 30)}<b>Solte para anexar</b><small>Fotos, vídeos, áudios e documentos</small></div></div>
       <form class="composer" id="composer">
         <button class="cbtn" id="emojiBtn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="Emojis e figurinhas" title="Emojis e figurinhas">${icon("smile", 19)}</button>
@@ -1050,6 +1059,8 @@
       if (dl) return download(dl.dataset.dl);
       const play = e.target.closest("[data-play]");
       if (play) return togglePlay(play.dataset.play);
+      const q = e.target.closest("[data-quote]");
+      if (q) return jumpToQuoted(q.dataset.quote);
       const dubBtn = e.target.closest("[data-dubin]");
       if (dubBtn) return dubIncoming(dubBtn.dataset.dubin, { manual: true });
       const tr = e.target.closest("[data-transcribe]");
@@ -1146,6 +1157,90 @@
     renderPreview();
   }
 
+  // ---- responder (citar) uma mensagem e mencionar (@) participantes
+  const quotedName = (q) => (q.fromMe ? "Você" : q.authorName || C.formatPhone(q.authorPhone) || (S.current && !S.current.isGroup ? displayName(S.current) : "Participante"));
+  const quotedText = (q) => q.text || (q.type === "audio" || q.type === "ptt" ? "🎤 Áudio" : q.label ? `📎 ${q.label}` : "Mensagem");
+  function quoteHtml(q) {
+    const color = q.fromMe ? "var(--primary)" : avatarColor(q.authorPhone || q.authorName || "x");
+    return `<button type="button" class="quote" data-quote="${esc(q.stanza || q.id || "")}" style="--qc:${color}" title="Ir para a mensagem citada">
+      <b>${esc(quotedName(q))}</b><span>${esc(quotedText(q).slice(0, 160))}</span></button>`;
+  }
+
+  // @número → @Nome nas mensagens (o WhatsApp manda a lista de quem foi mencionado)
+  function withMentions(html, m) {
+    const people = [...(m.mentions || []), ...(S.current?.isGroup && gside.chatId === S.current.chatId ? gside.info?.participants || [] : [])];
+    if (!people.length || !html.includes("@")) return html;
+    return html.replace(/@(\d{6,20})\b/g, (all, num) => {
+      const p = people.find((x) => (x.phone || "").replace(/\D/g, "") === num || String(x.id || "").startsWith(`${num}@`));
+      const name = p?.isMe ? "Você" : p?.name || p?.pushname;
+      return `<span class="mention">@${esc(name || C.formatPhone(num) || num)}</span>`;
+    });
+  }
+
+  function startReply(m) {
+    const quoted = {
+      id: m.id,
+      text: m.type === "text" ? m.text : m.text || "",
+      type: m.type === "text" ? "text" : m.type === "audio" ? "audio" : m.rawType || "other",
+      label: m.type === "audio" ? "Áudio" : m.label || (m.media?.kind === "sticker" ? "Figurinha" : m.media?.kind === "image" ? "Foto" : m.media?.kind === "video" ? "Vídeo" : m.filename || ""),
+      fromMe: m.fromMe,
+      authorName: m.authorName,
+      authorPhone: m.authorPhone,
+    };
+    S.reply = { id: m.id, quoted };
+    renderReply();
+    $("#text")?.focus();
+  }
+  function cancelReply() {
+    S.reply = null;
+    renderReply();
+    $("#text")?.focus();
+  }
+  function renderReply() {
+    const bar = $("#replybar");
+    if (!bar) return;
+    bar.hidden = !S.reply;
+    bar.innerHTML = S.reply
+      ? `${icon("reply", 16)}<div class="quote static" style="--qc:${S.reply.quoted.fromMe ? "var(--primary)" : avatarColor(S.reply.quoted.authorPhone || S.reply.quoted.authorName || "x")}"><b>Respondendo a ${esc(quotedName(S.reply.quoted))}</b><span>${esc(quotedText(S.reply.quoted).slice(0, 200))}</span></div>
+        <button type="button" class="ibtn" id="replyX" aria-label="Cancelar resposta (Esc)" title="Cancelar resposta (Esc)">${icon("x", 16)}</button>`
+      : "";
+    if (S.reply) $("#replyX").onclick = cancelReply;
+  }
+
+  // Pega a resposta em andamento (e as menções do texto) para um envio, e limpa a faixa.
+  function takeReply(text) {
+    const send = {};
+    const r = S.reply;
+    if (r) send.quotedId = r.id;
+    const mentions = Object.entries(S.mentionMap || {})
+      .filter(([key]) => new RegExp(`@${key}\\b`).test(text || ""))
+      .map(([, jid]) => jid);
+    if (mentions.length) send.mentions = mentions;
+    S.reply = null;
+    renderReply();
+    return { send, quoted: r?.quoted };
+  }
+
+  // Participantes do grupo aberto (para o "@"): usa o painel se já carregou.
+  async function groupPeople() {
+    const c = S.current;
+    if (!c?.isGroup) return [];
+    if (gside.chatId === c.chatId && gside.info) return gside.info.participants;
+    S.groupCache ||= {};
+    if (!S.groupCache[c.chatId]) S.groupCache[c.chatId] = call(C.OPS.GROUP_INFO, { chatId: c.chatId }).then((i) => i.participants).catch(() => []);
+    return S.groupCache[c.chatId];
+  }
+
+  function jumpToQuoted(stanza) {
+    const m = stanza && S.messages.find((x) => String(x.id).includes(stanza));
+    const el = m && document.querySelector(`#msgs [data-id="${CSS.escape(m.id)}"]`);
+    if (!el) return toast("A mensagem citada não está carregada. Role para cima para ver mensagens antigas.");
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    el.classList.remove("flash");
+    void el.offsetWidth;
+    el.classList.add("flash");
+  }
+
   // ---- emojis e figurinhas (painel do botão 😊 e sugestões ao digitar ":")
   function bindPicker() {
     const btn = $("#emojiBtn");
@@ -1184,7 +1279,8 @@
   async function sendStickerRec(rec) {
     if (!composerState().ok) throw new Error(composerState().why);
     const chatId = S.current.chatId;
-    const temp = { id: `pending-${Date.now()}`, chatId, fromMe: true, ts: Date.now(), type: "other", rawType: "sticker", text: "", ack: 0, media: { kind: "sticker", mime: rec.mime }, _pending: true, _new: true };
+    const rp = takeReply("");
+    const temp = { id: `pending-${Date.now()}`, chatId, fromMe: true, ts: Date.now(), type: "other", rawType: "sticker", text: "", quoted: rp.quoted, ack: 0, media: { kind: "sticker", mime: rec.mime }, _pending: true, _new: true };
     const url = URL.createObjectURL(rec.blob);
     stickers.urls.set(temp.id, url);
     S.messages.push(temp);
@@ -1192,7 +1288,7 @@
     try {
       const uploadId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
       await C.putMedia(`up:${uploadId}`, rec.blob, { chatId });
-      const msg = await call(C.OPS.SEND_FILE, { chatId, uploadId, type: "sticker", filename: "sticker.webp" });
+      const msg = await call(C.OPS.SEND_FILE, { chatId, uploadId, type: "sticker", filename: "sticker.webp", ...rp.send });
       stickers.urls.set(msg.id, url);
       const i = S.messages.indexOf(temp);
       if (i >= 0) {
@@ -1215,16 +1311,37 @@
     const box = $("#emsug");
     if (!ta || !box) return;
     const before = ta.value.slice(0, ta.selectionStart);
+    // grupo: "@nome" → participantes para mencionar
+    const at = S.current?.isGroup && before.match(/(?:^|\s)@([\p{L}\d_.-]{0,30})$/u);
+    if (at) return mentionSuggest(at[1], ta.selectionStart - at[1].length - 1);
     const m = before.match(/(?:^|\s):([\p{L}\d_+-]{2,24})$/u);
     const list = m && !before.startsWith("/") ? globalThis.OrbitaPicker.search(m[1], 8) : [];
     if (!list.length) return hideEmojiSug();
-    Object.assign(sug, { list, i: 0, start: ta.selectionStart - m[1].length - 1 });
+    Object.assign(sug, { kind: "emoji", list, i: 0, start: ta.selectionStart - m[1].length - 1 });
+    paintEmojiSug();
+  }
+
+  async function mentionSuggest(q, start) {
+    const chatId = S.current.chatId;
+    const people = await groupPeople();
+    if (S.current?.chatId !== chatId) return;
+    const nq = q.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const name = (p) => p.name || p.pushname || "";
+    const list = people
+      .filter((p) => !p.isMe && (p.phone || String(p.id).includes("@")))
+      .filter((p) => !nq || name(p).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/\s+/).some((w) => w.startsWith(nq)) || (p.phone || "").includes(nq))
+      .slice(0, 8);
+    if (!list.length) return hideEmojiSug();
+    Object.assign(sug, { kind: "mention", list, i: 0, start });
     paintEmojiSug();
   }
   function paintEmojiSug() {
     const box = $("#emsug");
     box.hidden = false;
-    box.innerHTML = sug.list.map((x, i) => `<button type="button" role="option" aria-selected="${i === sug.i}" data-sug="${i}" title="${esc(x.label)}"><span>${x.e}</span><small>${esc(x.label)}</small></button>`).join("") + `<span class="emhint">Tab ou Enter escolhe · Esc fecha</span>`;
+    box.innerHTML =
+      (sug.kind === "mention"
+        ? sug.list.map((p, i) => `<button type="button" role="option" aria-selected="${i === sug.i}" data-sug="${i}" class="msug"><span class="av sm" style="background:${avatarColor(p.id)}">${esc(initials(p.name || p.pushname || "#"))}</span><small><b>${esc(p.name || p.pushname || "Participante")}</b> ${esc(C.formatPhone(p.phone) || "")}</small></button>`).join("")
+        : sug.list.map((x, i) => `<button type="button" role="option" aria-selected="${i === sug.i}" data-sug="${i}" title="${esc(x.label)}"><span>${x.e}</span><small>${esc(x.label)}</small></button>`).join("")) + `<span class="emhint">Tab ou Enter escolhe · Esc fecha</span>`;
   }
   function hideEmojiSug() {
     const box = $("#emsug");
@@ -1236,7 +1353,14 @@
     const ta = $("#text");
     if (!x || !ta) return;
     const end = ta.selectionStart;
+    const kind = sug.kind;
     hideEmojiSug();
+    if (kind === "mention") {
+      // o WhatsApp marca a menção pelo número no texto + a lista de ids enviada junto
+      const key = (x.phone || String(x.id).split("@")[0]).replace(/\D/g, "") || String(x.id).split("@")[0];
+      (S.mentionMap ||= {})[key] = x.id;
+      return insertEmoji(`@${key} `, [sug.start, end]);
+    }
     insertEmoji(x.e, [sug.start, end]);
   }
   function emojiSugKeys(e) {
@@ -1387,7 +1511,8 @@
     if (tr && !skipPreview && p?.status !== "ready") return; // nunca envia sem tradução aprovada
     const text = tr ? (skipPreview ? "" : p.result.translated) : textPt;
     // bolha provisória até a confirmação do WhatsApp
-    const temp = { id: `pending-${Date.now()}`, chatId, fromMe: true, ts: Date.now(), type: "text", text: text || "Traduzindo…", textPt: tr ? textPt : undefined, ack: 0, _pending: true, _new: true };
+    const rp = takeReply(textPt);
+    const temp = { id: `pending-${Date.now()}`, chatId, fromMe: true, ts: Date.now(), type: "text", text: text || "Traduzindo…", textPt: tr ? textPt : undefined, quoted: rp.quoted, ack: 0, _pending: true, _new: true };
     S.messages.push(temp);
     S.preview = null;
     renderPreview();
@@ -1397,7 +1522,7 @@
     renderComposer();
     renderMessages({ toBottom: true });
     try {
-      const msg = await call(C.OPS.SEND_TEXT, tr ? { chatId, text, textPt, skipPreview } : { chatId, text: textPt });
+      const msg = await call(C.OPS.SEND_TEXT, { ...(tr ? { chatId, text, textPt, skipPreview } : { chatId, text: textPt }), ...rp.send });
       const i = S.messages.indexOf(temp);
       if (i >= 0) {
         if (S.messages.some((m) => m.id === msg.id)) S.messages.splice(i, 1); // o evento chegou antes
@@ -1406,6 +1531,7 @@
     } catch (e) {
       S.messages = S.messages.filter((m) => m !== temp);
       if (!ta.value) ta.value = textPt; // devolve o texto para não perder
+      if (rp.quoted && !S.reply) (S.reply = { id: rp.send.quotedId, quoted: rp.quoted }), renderReply(); // e a resposta
       renderComposer();
       toast(`Não foi enviada: ${e.message}`, "err");
     }
@@ -1599,7 +1725,8 @@
     if (v?.stage !== "ready") return;
     const chatId = S.current.chatId;
     const ta = $("#text");
-    const temp = { id: `pending-${Date.now()}`, chatId, fromMe: true, ts: Date.now(), type: "audio", text: "", textPt: translating() ? v.textPt : undefined, audio: { ptt: true, duration: v.duration, generated: true, ...(v.text ? { transcript: v.text, transcriptStatus: "done" } : {}) }, ack: 0, _pending: true, _new: true };
+    const rp = takeReply("");
+    const temp = { id: `pending-${Date.now()}`, chatId, fromMe: true, ts: Date.now(), type: "audio", text: "", textPt: translating() ? v.textPt : undefined, quoted: rp.quoted, audio: { ptt: true, duration: v.duration, generated: true, ...(v.text ? { transcript: v.text, transcriptStatus: "done" } : {}) }, ack: 0, _pending: true, _new: true };
     S.messages.push(temp);
     setVoice(null);
     ta.readOnly = false;
@@ -1608,7 +1735,7 @@
     renderComposer();
     renderMessages({ toBottom: true });
     try {
-      const msg = await call(C.OPS.SEND_AUDIO, { chatId, genId: v.genId });
+      const msg = await call(C.OPS.SEND_AUDIO, { chatId, genId: v.genId, ...rp.send });
       const i = S.messages.indexOf(temp);
       if (i >= 0) {
         if (S.messages.some((m) => m.id === msg.id)) S.messages.splice(i, 1);
@@ -2394,7 +2521,8 @@
         renderAttach();
         const uploadId = it.id;
         await C.putMedia(`up:${uploadId}`, it.file, { chatId });
-        await call(C.OPS.SEND_FILE, { chatId, uploadId, type: it.type, filename: it.name, thumb: it.thumb, width: it.width, height: it.height, ...(n - 1 === captionAt ? extra : {}) });
+        const rp = n === 1 ? takeReply(n - 1 === captionAt ? captionPt : "") : { send: {} };
+        await call(C.OPS.SEND_FILE, { chatId, uploadId, type: it.type, filename: it.name, thumb: it.thumb, width: it.width, height: it.height, ...(n - 1 === captionAt ? extra : {}), ...rp.send });
         URL.revokeObjectURL(it.url);
         a.items.shift();
         if (n - 1 === captionAt) {
@@ -2509,6 +2637,7 @@
     }
     if (e.key !== "Escape") return;
     if (S.picker?.isOpen) S.picker.close();
+    else if (S.reply && !S.attach && !S.preview && !S.voice) cancelReply();
     else if (S.attach) {
       if (!S.attach.sending) closeAttach();
     } else if (S.current && S.trOpen) {

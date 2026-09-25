@@ -27,6 +27,14 @@
   const CHAT = /@(c\.us|lid|g\.us)$/; // 1:1 e grupos (canais, status e listas de transmissão ficam de fora)
   const isGroup = (chatId) => /@g\.us$/.test(chatId);
 
+  // Opções de envio: responder (citar) uma mensagem e mencionar (@) participantes.
+  function replyOpts(cmd) {
+    const o = {};
+    if (cmd.quotedMsg) o.quotedMsg = cmd.quotedMsg;
+    if (cmd.mentionedList?.length) o.mentionedList = cmd.mentionedList;
+    return o;
+  }
+
   // Nome de um contato como o WhatsApp mostra (salvo > nome do perfil).
   function contactName(contact) {
     for (const k of ["name", "formattedName", "verifiedName", "pushname", "notifyName"]) {
@@ -91,6 +99,35 @@
       revoked: rawType === "revoked",
     };
     if (isAudio) msg.audio = { duration: Number(get(m, "duration") || 0), ptt: rawType === "ptt" };
+    // resposta: a mensagem citada (o WhatsApp guarda o id curto e um resumo dela)
+    const qStanza = String(get(m, "quotedStanzaID") || "");
+    if (qStanza) {
+      const q = get(m, "quotedMsg") || {};
+      const qType = String(get(q, "type") || "");
+      const qPart = ser(get(m, "quotedParticipant"));
+      let me = "";
+      try {
+        me = ser(WPP()?.conn?.getMyUserId?.());
+      } catch {}
+      const qContact = qPart ? contactOf(qPart) : null;
+      msg.quoted = {
+        stanza: qStanza,
+        text: String((qType === "chat" ? get(q, "body") : get(q, "caption")) || "").slice(0, 500),
+        type: qType === "chat" ? "text" : qType,
+        label: LABELS[qType] || (qType === "ptt" || qType === "audio" ? "Áudio" : ""),
+        fromMe: Boolean(qPart && me && qPart === me),
+        authorName: qContact ? contactName(qContact) : "",
+        authorPhone: qPart ? phoneOf(qPart, qContact) : undefined,
+      };
+    }
+    // menções (@) no texto: quem foi citado, para mostrar o nome no lugar do número
+    const mentioned = get(m, "mentionedJidList");
+    if (mentioned?.length) {
+      msg.mentions = [...mentioned].map(ser).filter(Boolean).slice(0, 50).map((jid) => {
+        const c = contactOf(jid);
+        return { id: jid, phone: phoneOf(jid, c) || jid.split("@")[0], name: contactName(c) };
+      });
+    }
     // grupo: quem mandou (id do participante, nome e número, quando o WhatsApp mostra)
     if (isGroup(chatId) && !fromMe) {
       const author = ser(get(m, "author") || get(m, "sender"));
@@ -242,7 +279,7 @@
         return list.map(serializeMessage).filter(Boolean);
       }
       case "sendText": {
-        const res = await chat.sendTextMessage(cmd.chatId, cmd.text, { createChat: true, waitForAck: false });
+        const res = await chat.sendTextMessage(cmd.chatId, cmd.text, { createChat: true, waitForAck: false, ...replyOpts(cmd) });
         let msg = null;
         try {
           msg = serializeMessage(WPP().chat.getMessageById ? await WPP().chat.getMessageById(ser(res?.id)) : null);
@@ -293,7 +330,7 @@
         const parts = up?.parts || [];
         if (parts.length !== cmd.chunks || [...parts].some((p) => !p)) throw new Error("O arquivo não chegou inteiro ao WhatsApp Web. Tente de novo.");
         const file = new File(parts, cmd.filename || "arquivo", { type: cmd.mime || "application/octet-stream" });
-        const o = { createChat: true, waitForAck: false, type: cmd.type, filename: cmd.filename, mimetype: file.type };
+        const o = { createChat: true, waitForAck: false, type: cmd.type, filename: cmd.filename, mimetype: file.type, ...replyOpts(cmd) };
         if (cmd.caption && cmd.type !== "audio" && cmd.type !== "sticker") o.caption = cmd.caption;
         if (cmd.type === "audio") o.isPtt = false;
         const res = await chat.sendFileMessage(cmd.chatId, file, o);
@@ -326,7 +363,7 @@
         const bytes = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
         const voice = new File([bytes], "audio.ogg", { type: cmd.mime });
-        const res = await chat.sendFileMessage(cmd.chatId, voice, { createChat: true, waitForAck: false, type: "audio", isPtt: true, mimetype: cmd.mime, waveform: true });
+        const res = await chat.sendFileMessage(cmd.chatId, voice, { createChat: true, waitForAck: false, type: "audio", isPtt: true, mimetype: cmd.mime, waveform: true, ...replyOpts(cmd) });
         const result = await Promise.race([res?.sendMsgResult, new Promise((r) => setTimeout(() => r({ timeout: true }), 60000))]).catch(() => null);
         const code = result?.messageSendResult ?? (typeof result === "string" ? result : undefined);
         if (code !== undefined && code !== "OK" && code !== WPP()?.whatsapp?.enums?.SendMsgResult?.OK) throw new Error(`O WhatsApp recusou o áudio (${String(code)}).`);

@@ -50,6 +50,8 @@ const chats = {
   "5511912345678@c.us": { id: { _serialized: "5511912345678@c.us" }, contact: { name: "Carla Souza" }, unreadCount: 0 },
   "123456789@lid": { id: { _serialized: "123456789@lid" }, contact: { pushname: "Anna" }, formattedTitle: "Anna", unreadCount: 0 },
 };
+// respostas (só quando o teste pede): o John responde ao seu "Olá!"
+if (window.__replies) store["5511999998888@c.us"].push({ ...mk("5511999998888@c.us", "r1", false, "Sim, pode mandar o preço", now - 3200), quotedStanzaID: "2", quotedMsg: { type: "chat", body: "Olá!" }, quotedParticipant: { _serialized: "5511000000000@c.us" } });
 // grupos (só quando o teste pede): participantes com número, @lid com número conhecido e @lid oculto
 window.__contacts = {};
 window.__parts = {};
@@ -66,13 +68,23 @@ if (window.__groups) {
   window.__parts[G] = [{ id: W("5511000000000@c.us"), isAdmin: true, isSuperAdmin: true }, { id: W("5511999998888@c.us"), isAdmin: true }, { id: W("5511977776666@c.us") }, { id: W("88888@lid") }, { id: W("99999@lid") }];
   window.__parts[F] = [{ id: W("5511000000000@c.us"), isAdmin: true }, { id: W("5531955554444@c.us") }, { id: W("5511977776666@c.us") }];
   const gm = (chat, n, author, body, t, fromMe = false) => ({ ...mk(chat, n, fromMe, body, t), ...(fromMe ? {} : { author: W(author) }) });
-  store[G] = [gm(G, 1, "5511999998888@c.us", "Bom dia, pessoal!", now - 900), gm(G, 2, "5511999998888@c.us", "Chegou o catálogo novo", now - 880), gm(G, 3, "5511977776666@c.us", "Oba, manda aí 😍", now - 600), gm(G, 4, "88888@lid", "Quero ver também", now - 300)];
+  store[G] = [gm(G, 1, "5511999998888@c.us", "Bom dia, pessoal!", now - 900), gm(G, 2, "5511999998888@c.us", "Chegou o catálogo novo", now - 880), gm(G, 3, "5511977776666@c.us", "Oba, manda aí 😍", now - 600), { ...gm(G, 5, "5511977776666@c.us", "@5511999998888 pode enviar para mim?", now - 500), mentionedJidList: [W("5511999998888@c.us")] }, gm(G, 4, "88888@lid", "Quero ver também", now - 300)];
   store[F] = [gm(F, 1, "5531955554444@c.us", "Almoço domingo?", now - 5000)];
   chats[G] = { id: W(G), formattedTitle: "Clientes VIP", groupMetadata: { subject: "Clientes VIP", desc: "Novidades e promoções\nSó para clientes", creation: now - 86400 * 30, participants: window.__parts[G] }, unreadCount: 1 };
   chats[F] = { id: W(F), formattedTitle: "Família", groupMetadata: { subject: "Família", participants: window.__parts[F] }, unreadCount: 0 };
 }
 for (const [id, c] of Object.entries(chats)) { c.t = store[id].at(-1).t; c.msgs = { last: () => store[id].at(-1) }; }
 const ok = (id) => ({ id: { _serialized: id }, sendMsgResult: Promise.resolve({ messageSendResult: "OK" }) });
+// responder/mencionar: como o WhatsApp guarda (id curto da citada, resumo e quem escreveu)
+const withReply = (m, o = {}) => {
+  window.__sendOpts = (window.__sendOpts || []).concat([{ quotedMsg: o.quotedMsg, mentionedList: o.mentionedList }]);
+  if (o.quotedMsg) {
+    const q = Object.values(store).flat().find((x) => x.id._serialized === o.quotedMsg);
+    if (q) Object.assign(m, { quotedStanzaID: o.quotedMsg.split("_").pop(), quotedMsg: { type: q.type, body: q.body, caption: q.caption }, quotedParticipant: { _serialized: q.id.fromMe ? "5511000000000@c.us" : (q.author?._serialized || q.id.remote) } });
+  }
+  if (o.mentionedList?.length) m.mentionedJidList = o.mentionedList.map((j) => ({ _serialized: j }));
+  return m;
+};
 let sent = 0;
 const FAKE = {
   isReady: true, conn: { isMainReady: () => true, getMyUserId: () => ({ _serialized: "5511000000000@c.us" }) },
@@ -92,7 +104,7 @@ const FAKE = {
       if (typeof file === "string" && !/^data:[\w.+-]+\/[\w.+-]+;base64,/.test(file)) throw "invalid_data_url";
       const magic = file instanceof Blob ? await file.slice(0, 4).text() : atob(file.slice(file.indexOf(",") + 1, file.indexOf(",") + 9)).slice(0, 4);
       const type = o.type && o.type !== "audio" ? o.type : o.isPtt ? "ptt" : "audio";
-      const m = { ...mk(id, `f${++sent}`, true, "", Date.now() / 1000 | 0, 1), type, body: undefined, duration: 2, caption: o.caption, mimetype: o.mimetype, filename: o.filename, size: file.size };
+      const m = withReply({ ...mk(id, `f${++sent}`, true, "", Date.now() / 1000 | 0, 1), type, body: undefined, duration: 2, caption: o.caption, mimetype: o.mimetype, filename: o.filename, size: file.size }, o);
       if (file instanceof Blob) (window.__files ||= []).push({ type: o.type, name: file.name, mime: file.type, size: file.size, caption: o.caption, magic, sum: [...new Uint8Array(await file.arrayBuffer())].reduce((a, b) => (a + b) % 1000003, 0) });
       window.__lastFile = { isPtt: o.isPtt, type: o.type, mime: o.mimetype, head: typeof file === "string" ? file.slice(0, 40) : `File ${file.name} ${file.type}`, oggMagic: magic === "OggS" };
       store[id].push(m);
@@ -119,8 +131,8 @@ const FAKE = {
       return { id, sendMsgResult: "OK", isRevoked: false, isDeleted: true };
     },
     getMessageById: async (id) => Object.values(store).flat().find((m) => m.id._serialized === id),
-    sendTextMessage: async (id, text) => {
-      const m = mk(id, `s${++sent}`, true, text, Date.now() / 1000 | 0, 1);
+    sendTextMessage: async (id, text, o) => {
+      const m = withReply(mk(id, `s${++sent}`, true, text, Date.now() / 1000 | 0, 1), o);
       store[id].push(m);
       setTimeout(() => (handlers["chat.new_message"] || []).forEach((f) => f(m)), 300); // WhatsApp também emite o evento do enviado
       return ok(m.id._serialized);

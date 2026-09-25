@@ -560,6 +560,20 @@
     return { text, extra: { textPt, translatedFrom: textPt, lang: C.contactLangOf(chat, await C.loadSettings()) } };
   }
 
+  // Responder (citar) e mencionar: a mensagem citada precisa ser desta conversa;
+  // as menções são ids do WhatsApp ("5511…@c.us" ou "…@lid").
+  async function replyOf(req) {
+    const out = {};
+    if (req.quotedId) {
+      const q = await C.getMessage(String(req.quotedId));
+      if (!q || q.chatId !== req.chatId) throw new Error("A mensagem que você está respondendo não é desta conversa.");
+      out.quotedMsg = q.id;
+    }
+    const list = Array.isArray(req.mentions) ? req.mentions.map(String).filter((j) => /^[\w.-]+@(c\.us|lid)$/.test(j)).slice(0, 256) : [];
+    if (list.length) out.mentionedList = [...new Set(list)];
+    return out;
+  }
+
   // Anexo guardado pelo painel no cache de mídia ("up:<id>"). A porta do Chrome
   // tem limite de tamanho: o arquivo vai em pedaços e é remontado na aba.
   const UPLOAD_CHUNK = 4 * 1024 * 1024;
@@ -582,7 +596,7 @@
       for (let j = 0; j < bytes.length; j += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(j, j + 0x8000));
       await exec({ op: C.TAB_CMDS.UPLOAD_CHUNK, id: req.uploadId, index: i, data: btoa(bin) }, 60000);
     }
-    const msg = await exec({ op: C.TAB_CMDS.SEND_FILE, chatId: req.chatId, uploadId: req.uploadId, chunks, type, mime: blob.type || rec.mime, filename: String(req.filename || "arquivo"), caption: caption.trim() || undefined }, 300000);
+    const msg = await exec({ op: C.TAB_CMDS.SEND_FILE, ...(await replyOf(req)), chatId: req.chatId, uploadId: req.uploadId, chunks, type, mime: blob.type || rec.mime, filename: String(req.filename || "arquivo"), caption: caption.trim() || undefined }, 300000);
     // miniatura feita no painel, caso o WhatsApp ainda não tenha gerado a dele
     if (msg.media && !msg.media.thumb && req.thumb) Object.assign(msg.media, { thumb: req.thumb, width: msg.media.width || req.width, height: msg.media.height || req.height });
     if (extra) Object.assign(msg, extra);
@@ -653,7 +667,7 @@
         const { text, extra } = await outgoingText(req.chatId, String(req.text || ""), req.textPt, req.skipPreview);
         if (!text.trim()) throw new Error("Mensagem vazia.");
         if (text.length > 65000) throw new Error("Mensagem longa demais.");
-        const msg = await exec({ op: C.TAB_CMDS.SEND_TEXT, chatId: req.chatId, text }, 60000);
+        const msg = await exec({ op: C.TAB_CMDS.SEND_TEXT, chatId: req.chatId, text, ...(await replyOf(req)) }, 60000);
         if (extra) Object.assign(msg, extra);
         await onIncoming(msg, { chatId: req.chatId });
         if (extra) await C.setMeta(`preview:${req.chatId}`, null); // uma prévia vale para um envio
@@ -892,7 +906,7 @@
         const bytes = new Uint8Array(await rec.blob.arrayBuffer());
         let bin = "";
         for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-        const msg = await exec({ op: C.TAB_CMDS.SEND_VOICE, chatId: req.chatId, data: btoa(bin), mime: rec.blob.type || "audio/ogg; codecs=opus", duration: rec.duration }, 120000);
+        const msg = await exec({ op: C.TAB_CMDS.SEND_VOICE, ...(await replyOf(req)), chatId: req.chatId, data: btoa(bin), mime: rec.blob.type || "audio/ogg; codecs=opus", duration: rec.duration }, 120000);
         // dublada (ElevenLabs): não há texto; a transcrição fica para depois, se pedirem
         const said = approval.text ? { transcript: approval.text, transcriptStatus: "done" } : {};
         Object.assign(msg, { textPt: approval.textPt || undefined, lang: approval.lang, audio: { ...(msg.audio || {}), ptt: true, duration: Math.round(rec.duration), generated: true, engine: approval.engine || "fish", ...said } });

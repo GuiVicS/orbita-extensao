@@ -4,6 +4,11 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.16.0
+
+- **Conversas: responder mensagens (citar), como no WhatsApp.** No menu do balão (setinha), **Responder** abre a faixa “Respondendo a…” acima do campo (Esc ou × cancela). A resposta vai citada no WhatsApp — texto, anexo, figurinha ou áudio. Mensagens que chegam respondendo a outra mostram a citação no balão; clique nela para ir até a mensagem original.
+- **Mencionar (@) nos grupos.** Digite `@` e parte do nome para ver os participantes (Tab ou Enter escolhe). A menção vai marcada no WhatsApp (a pessoa é notificada). Nas mensagens, `@5511…` aparece como **@Nome**.
+
 ## Novidades da 1.15.0
 
 - **Áudio do cliente em outro idioma, dublado para o português (ElevenLabs).** Com a ElevenLabs como opção principal, os áudios recebidos em inglês (ou outro idioma que não o seu) continuam sendo **transcritos, como sempre**, e ganham um segundo player: **“Em português, dublado com a voz do contato”**. Para a ElevenLabs vai **só o áudio** (convertido em WAV) — a transcrição nunca é enviada.
@@ -126,7 +131,7 @@ aba do WhatsApp (js/chat-page.js, WA-JS) ⇄ js/chat-content.js ⇄ porta "orbit
 ```sh
 node --test tests/*.test.mjs            # unitários (motor de tradução, transcrição, voz, utilidades)
 npm i -D playwright && npx playwright install chromium
-node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect, stale-worker, sticker, emoji-sticker, groups, dub, dub-incoming
+node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect, stale-worker, sticker, emoji-sticker, groups, dub, dub-incoming, reply-mention
 ```
 
 Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web simulado (`tests/e2e/fake-whatsapp.html`) e provedores de IA/voz simulados — nenhuma chave real é usada.
