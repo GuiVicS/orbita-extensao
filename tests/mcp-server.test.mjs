@@ -108,3 +108,21 @@ test("WebSocket: sites (outra origem) são recusados; token errado derruba; toke
   sock.destroy();
   s.p.kill();
 });
+
+test("rodando à mão (sem agente) continua no ar; --check aponta o que falta", async () => {
+  const port = PORT + 50;
+  const p = spawn(process.execPath, [server, "--token", "t", "--port", String(port)], { stdio: ["ignore", "pipe", "pipe"] }); // stdin fechado, como num terminal de fundo
+  await new Promise((r) => setTimeout(r, 1200));
+  const r = await fetch(`http://127.0.0.1:${port}/`);
+  assert.match(await r.text(), /aguardando a extensão/);
+  assert.equal(p.exitCode, null, "não encerrou");
+  // --check com a porta ocupada e sem token: diz os dois problemas e sai com erro
+  const c = spawn(process.execPath, [server, "--check", "--port", String(port)], { env: { ...process.env, ORBITA_MCP_TOKEN: "", ORBITA_MCP_CHECK_WAIT_MS: "300" } });
+  let out = "";
+  c.stdout.on("data", (d) => (out += d));
+  const code = await new Promise((res) => c.on("exit", res));
+  p.kill();
+  assert.equal(code, 1);
+  assert.match(out, /token NÃO definido/);
+  assert.match(out, /já está em uso/);
+});

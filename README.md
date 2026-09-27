@@ -4,6 +4,20 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.22.2
+
+- **Agente local (MCP) com o OpenCode.** Opções → Agente local → "Configuração para" ganhou o **OpenCode (opencode.json)**, no formato dele: `"type": "local"`, `command` em lista e `environment`. O formato dos agentes Claude (`args`/`env`) não funciona no OpenCode.
+- **Sem configuração com caminho de exemplo.** Enquanto a pasta da extensão não é informada, o botão Copiar fica desligado. A pasta também é aceita se você colar a pasta `mcp` ou o arquivo `orbita-mcp.mjs`, com ou sem aspas.
+- **Diagnóstico `--check`**, mostrado pronto nas Opções:
+
+  ```
+  node "…\mcp\orbita-mcp.mjs" --check --token … --port …
+  ```
+
+  Ele confere o Node.js, o token e a porta, espera a extensão conectar e diz o que falta: token diferente, porta ocupada ou agente desligado.
+- **Servidor rodando à mão continua no ar.** Antes ele encerrava na hora quando não havia um agente conversando com ele, e parecia quebrado (porta fechada).
+- **Registro em arquivo** (`%TEMP%\orbita-mcp.log`): os agentes escondem as mensagens do servidor. Um erro inesperado agora vai para o registro em vez de derrubar o servidor.
+
 ## Novidades da 1.22.1
 
 - **Corrigido: “Module UserPrefs was not found” / “Module getPushname was not found”** em chrome://extensions. O problema estava na biblioteca que conversa com o WhatsApp Web (WA-JS 4.6.0):

@@ -336,11 +336,17 @@
       <select id=mcpCfgKind>
         <option value=desktop>Claude Desktop (claude_desktop_config.json)</option>
         <option value=code>Claude Code (comando no terminal)</option>
+        <option value=opencode>OpenCode (opencode.json)</option>
         <option value=json>Outro agente (Cursor, Windsurf… — JSON)</option>
       </select>
       <pre id=mcpCfg></pre>
       <div class=actions><button type=button id=mcpCopy>Copiar configuração</button><span class=status id=mcpCopyStatus></span></div>
       <p class=hint id=mcpCfgHint></p>
+      <details><summary>Não conectou? Teste no terminal</summary>
+        <p class=hint>Com o Chrome aberto e o agente local ligado aqui, rode (Prompt de Comando ou PowerShell):</p>
+        <pre id=mcpCheckCmd></pre>
+        <p class=hint>Ele confere o Node.js, o token, a porta e espera a extensão conectar, dizendo o que falta. O registro do servidor fica em <code>%TEMP%\orbita-mcp.log</code> — os agentes escondem as mensagens dele.</p>
+      </details>
       <div id=mcpPendingBox hidden><h3>Envios esperando sua confirmação</h3><div id=mcpPending></div></div>
       <details><summary>Ações permitidas, uma a uma (<span id=mcpToolCount></span>)</summary><p class=hint>Desmarque o que o agente não deve fazer — por exemplo, deixar ler e mandar mensagem, mas não criar listas.</p><div id=mcpTools></div></details>
       <details><summary>Registro de atividade do agente</summary><div class=actions style="margin-top:8px"><button type=button id=mcpLogClear>Limpar registro</button></div><div id=mcpLog></div></details>

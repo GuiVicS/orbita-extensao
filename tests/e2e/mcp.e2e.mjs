@@ -103,6 +103,14 @@ assert.equal(await opt.isChecked("#mcpSend"), false, "enviar começa desligado")
 await opt.check("#mcpEnabled");
 await opt.fill("#mcpPort", String(PORT));
 await opt.locator("#mcpPort").dispatchEvent("change");
+assert.equal(await opt.isDisabled("#mcpCopy"), true, "sem a pasta, não dá para copiar um caminho de exemplo");
+assert.match(await opt.textContent("#mcpCfg"), /Informe acima a pasta/);
+await opt.fill("#mcpFolder", "\"C:\\Orbita\\orbita-extensao\\mcp\\orbita-mcp.mjs\""); // colou o arquivo, com aspas
+assert.equal(await opt.isDisabled("#mcpCopy"), false);
+await opt.selectOption("#mcpCfgKind", "opencode");
+assert.deepEqual(JSON.parse(await opt.textContent("#mcpCfg")).mcp.orbita, { type: "local", command: ["node", "C:\\Orbita\\orbita-extensao\\mcp\\orbita-mcp.mjs"], enabled: true, timeout: 20000, environment: { ORBITA_MCP_TOKEN: await opt.inputValue("#mcpToken"), ORBITA_MCP_PORT: String(PORT) } });
+assert.match(await opt.textContent("#mcpCheckCmd"), /^node "C:\\Orbita\\orbita-extensao\\mcp\\orbita-mcp\.mjs" --check --token \S+ --port \d+$/);
+await opt.selectOption("#mcpCfgKind", "desktop");
 await opt.fill("#mcpFolder", "C:\\Orbita\\orbita-extensao");
 const token = await opt.inputValue("#mcpToken");
 const cfgJson = JSON.parse(await opt.textContent("#mcpCfg"));

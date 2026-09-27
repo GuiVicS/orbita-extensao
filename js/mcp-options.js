@@ -25,26 +25,41 @@
   const save = () => chrome.storage.local.set({ [K.cfg]: cfg });
 
   // ---------------------------------------------------------------- configuração do agente
+  // pasta da extensão (aceita também a pasta mcp ou o próprio arquivo, colados por engano)
+  function folder() {
+    return String(cfg.folder || "")
+      .trim()
+      .replace(/^"+|"+$/g, "")
+      .replace(/[\\/]+$/, "")
+      .replace(/[\\/]orbita-mcp\.mjs$/i, "")
+      .replace(/[\\/]mcp$/i, "");
+  }
   function serverPath() {
-    const f = String(cfg.folder || "").trim().replace(/[\\/]+$/, "");
+    const f = folder();
     const sep = f.includes("/") && !f.includes("\\") ? "/" : "\\";
-    return `${f || "C:\\caminho\\da\\orbita-extensao"}${sep}mcp${sep}orbita-mcp.mjs`;
+    return `${f}${sep}mcp${sep}orbita-mcp.mjs`;
   }
   function configText(kind) {
     const env = { ORBITA_MCP_TOKEN: cfg.token, ORBITA_MCP_PORT: String(cfg.port) };
+    if (!folder()) return "Informe acima a pasta da extensão neste computador para gerar a configuração.";
     if (kind === "code") return `claude mcp add orbita --scope user --env ORBITA_MCP_TOKEN=${cfg.token} --env ORBITA_MCP_PORT=${cfg.port} -- node "${serverPath()}"`;
+    // OpenCode: formato próprio ("type": "local", command em lista, "environment")
+    if (kind === "opencode") return JSON.stringify({ $schema: "https://opencode.ai/config.json", mcp: { orbita: { type: "local", command: ["node", serverPath()], enabled: true, timeout: 20000, environment: env } } }, null, 2);
     const server = { command: "node", args: [serverPath()], env };
     return JSON.stringify({ mcpServers: { orbita: server } }, null, 2);
   }
   const HINTS = {
     desktop: "Claude Desktop → Configurações → Desenvolvedor → Editar configuração: cole dentro de “mcpServers” (ou o arquivo inteiro, se estiver vazio) e reinicie o Claude Desktop.",
     code: "Rode o comando uma vez no terminal. Depois, no Claude Code, /mcp mostra a Órbita conectada.",
+    opencode: "Cole em %USERPROFILE%\\.config\\opencode\\opencode.json (se o arquivo já tiver conteúdo, junte só a parte \"orbita\" dentro de \"mcp\") e reinicie o OpenCode. Confira com: opencode mcp list.",
     json: "Cole na configuração de servidores MCP do seu agente (Cursor: Settings → MCP; Windsurf: mcp_config.json).",
   };
   function paintConfig() {
     const kind = $("mcpCfgKind").value;
     $("mcpCfg").textContent = configText(kind);
-    $("mcpCfgHint").textContent = `${HINTS[kind]} O token é como uma senha: não compartilhe.`;
+    $("mcpCfgHint").textContent = folder() ? `${HINTS[kind]} O token é como uma senha: não compartilhe.` : "";
+    $("mcpCopy").disabled = !folder();
+    $("mcpCheckCmd").textContent = folder() ? `node "${serverPath()}" --check --token ${cfg.token} --port ${cfg.port}` : "Informe a pasta da extensão acima.";
   }
 
   // ---------------------------------------------------------------- ações uma a uma

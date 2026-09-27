@@ -7,6 +7,7 @@
 // é repassada para a extensão, que executa com as permissões das Opções.
 //
 //   node orbita-mcp.mjs            (token e porta pelas variáveis abaixo)
+//   node orbita-mcp.mjs --check    diagnóstico: Node, token, porta e conexão da extensão
 //   ORBITA_MCP_TOKEN  token copiado de Opções → Agente local (obrigatório)
 //   ORBITA_MCP_PORT   porta local (padrão 17345; a mesma das Opções)
 //
@@ -16,6 +17,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import vm from "node:vm";
 import path from "node:path";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -26,8 +28,24 @@ const arg = (name) => {
 const TOKEN = String(arg("token") || process.env.ORBITA_MCP_TOKEN || "").trim();
 const PORT = Number(arg("port") || process.env.ORBITA_MCP_PORT || 17345);
 const CALL_TIMEOUT_MS = Number(process.env.ORBITA_MCP_TIMEOUT_MS || 180000);
-const SUPPORTED = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const log = (...a) => process.stderr.write(`[orbita-mcp] ${a.join(" ")}\n`); // stdout é só do protocolo
+const SUPPORTED = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
+const CHECK = process.argv.includes("--check");
+// O agente esconde o stderr: tudo vai também para um arquivo (%TEMP%\orbita-mcp.log)
+const LOG_FILE = path.join(os.tmpdir(), "orbita-mcp.log");
+try {
+  if (fs.statSync(LOG_FILE).size > 512 * 1024) fs.writeFileSync(LOG_FILE, "");
+} catch {}
+function log(...a) {
+  const line = `[orbita-mcp] ${a.join(" ")}`;
+  process.stderr.write(`${line}\n`); // stdout é só do protocolo
+  try {
+    fs.appendFileSync(LOG_FILE, `${new Date().toISOString()} pid ${process.pid} ${line}\n`);
+  } catch {}
+}
+process.on("uncaughtException", (e) => log("erro inesperado:", e?.stack || e?.message || e));
+process.on("unhandledRejection", (e) => log("erro inesperado (promessa):", e?.stack || e?.message || e));
+log(`iniciando (Node ${process.version}, ${process.platform}, ${fileURLToPath(import.meta.url)})`);
+if (Number(process.versions.node.split(".")[0]) < 18) log("ATENÇÃO: é preciso o Node.js 18 ou mais novo (nodejs.org).");
 
 // ---------------------------------------------------------------- catálogo (o mesmo da extensão)
 function loadCatalog() {
@@ -36,7 +54,13 @@ function loadCatalog() {
   vm.runInNewContext(fs.readFileSync(path.join(here, "..", "js", "mcp-tools.js"), "utf8"), sandbox, { filename: "mcp-tools.js" });
   return sandbox.OrbitaMcpTools;
 }
-const CATALOG = loadCatalog();
+let CATALOG;
+try {
+  CATALOG = loadCatalog();
+} catch (e) {
+  log(`não consegui ler ${path.join(here, "..", "js", "mcp-tools.js")}: ${e.message}. Este arquivo precisa estar dentro da pasta mcp da extensão Órbita.`);
+  process.exit(1);
+}
 const VERSION = (() => {
   try {
     return JSON.parse(fs.readFileSync(path.join(here, "..", "manifest.json"), "utf8")).version;
@@ -135,6 +159,7 @@ class Peer {
 
 // ---------------------------------------------------------------- extensão conectada
 let ext = null; // { peer, allowed: Set, version }
+let checkRejected = false;
 let mcpClient = null; // clientInfo do agente
 const pending = new Map(); // id → { resolve, reject, timer }
 
@@ -165,7 +190,8 @@ server.on("upgrade", (req, socket) => {
     }
     if (!authed) {
       if (msg.type !== "hello" || !TOKEN || !safeEqual(msg.token, TOKEN)) {
-        log("conexão recusada: token inválido");
+        log("conexão recusada: token inválido (a extensão está com outro token)");
+        checkRejected = true;
         return peer.close(4001, "token inválido");
       }
       authed = true;
@@ -216,7 +242,11 @@ server.on("error", (e) => {
   listenError = e;
 });
 let listenError = null;
-server.listen(PORT, "127.0.0.1", () => log(`aguardando a extensão em ws://127.0.0.1:${PORT}/orbita`));
+server.listen(PORT, "127.0.0.1", () => {
+  listening = true;
+  log(`aguardando a extensão em ws://127.0.0.1:${PORT}/orbita`);
+});
+let listening = false;
 if (!TOKEN) log("ATENÇÃO: defina ORBITA_MCP_TOKEN com o token de Opções → Agente local (MCP).");
 
 function callExtension(name, args) {
@@ -309,6 +339,7 @@ async function handle(msg) {
 let stdinBuf = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
+  if (CHECK) return;
   stdinBuf += chunk;
   let i;
   while ((i = stdinBuf.indexOf("\n")) >= 0) {
@@ -325,5 +356,34 @@ process.stdin.on("data", (chunk) => {
     for (const m of Array.isArray(msg) ? msg : [msg]) handle(m).catch((e) => m.id !== undefined && replyError(m.id, -32603, e.message));
   }
 });
-// o agente fechou: encerra junto
-process.stdin.on("end", () => process.exit(0));
+// O agente fechou: encerra junto. Rodando à mão (sem agente, stdin vazio ou
+// terminal), continua no ar para testar a conexão com a extensão.
+let gotInput = false;
+process.stdin.on("data", () => (gotInput = true));
+process.stdin.on("end", () => {
+  if (gotInput) process.exit(0);
+  if (!CHECK) log("rodando sem agente (teste manual): a porta fica aberta para a extensão conectar. Ctrl+C para sair.");
+});
+if (process.stdin.isTTY && !CHECK) log("rodando no terminal (teste manual). No uso normal quem inicia este servidor é o agente. Ctrl+C para sair.");
+
+// ---------------------------------------------------------------- diagnóstico (--check)
+if (CHECK) {
+  const out = (ok, text) => console.log(`${ok === null ? "…" : ok ? "✔" : "✖"} ${text}`);
+  (async () => {
+    console.log(`\nÓrbita MCP — diagnóstico (log completo: ${LOG_FILE})\n`);
+    out(Number(process.versions.node.split(".")[0]) >= 18, `Node.js ${process.version} (precisa 18+)`);
+    out(true, `servidor: ${fileURLToPath(import.meta.url)}`);
+    out(true, `catálogo: ${CATALOG.TOOLS.length} ferramentas, ${CATALOG.PROMPTS.length} roteiros (Órbita ${VERSION})`);
+    out(Boolean(TOKEN), TOKEN ? `token definido (${TOKEN.slice(0, 4)}…)` : "token NÃO definido: passe --token SEU_TOKEN ou a variável ORBITA_MCP_TOKEN (Opções → Agente local)");
+    await new Promise((r) => setTimeout(r, 500));
+    out(listening, listening ? `porta ${PORT} aberta em 127.0.0.1` : `porta ${PORT} não abriu: ${listenError?.code === "EADDRINUSE" ? "já está em uso (outro agente ou outro teste rodando? feche-o)" : listenError?.message || "erro desconhecido"}`);
+    if (!listening || !TOKEN) process.exit(1);
+    out(null, "esperando a extensão conectar (até 90 s). Confira: Chrome aberto, Opções → Agente local LIGADO, mesma porta e token…");
+    const start = Date.now();
+    while (!ext && Date.now() - start < Number(process.env.ORBITA_MCP_CHECK_WAIT_MS || 90000) && !checkRejected) await new Promise((r) => setTimeout(r, 500));
+    if (ext) out(true, `extensão conectada (Órbita ${ext.version}, ${ext.allowed.size} ações liberadas). Tudo certo: configure o agente com este mesmo comando, sem o --check.`);
+    else if (checkRejected) out(false, "a extensão tentou conectar, mas com OUTRO token. Copie a configuração de novo em Opções → Agente local.");
+    else out(false, "a extensão não conectou. Verifique se o Agente local está ligado nas Opções, se a porta é a mesma e recarregue a extensão em chrome://extensions.");
+    process.exit(ext ? 0 : 1);
+  })();
+}
