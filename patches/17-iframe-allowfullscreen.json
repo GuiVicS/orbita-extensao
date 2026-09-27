@@ -1,0 +1,6 @@
+[
+  {
+    "before": "allow:\"microphone; fullscreen\",allowFullScreen:!0,",
+    "after": "allow:\"microphone; fullscreen\","
+  }
+]

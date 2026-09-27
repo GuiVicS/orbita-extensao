@@ -4,6 +4,11 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.25.1
+
+- Páginas abertas de uma versão anterior (depois de uma atualização) mostram um aviso “A Órbita foi atualizada — Recarregar” em vez do erro “Extension context invalidated” no console.
+- Removido o aviso “Allow attribute will take precedence over 'allowfullscreen'” da tela Conversas (patch 17).
+
 ## Novidades da 1.25.0
 
 - **Agente local (MCP): Resumo do WhatsApp feito pelo agente.** O agente usa o modelo dele, e o resultado aparece na Órbita do mesmo jeito que o Resumo feito por ela.
@@ -382,6 +387,7 @@ Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web
 | `10-ficha-lead.json` | `js/dashboard.js` | CRM só com etapa, tags e notas | Ficha do lead (`js/lead-form.js`) no card do cliente; clientes do Kanban trazem `lead`/`deal` e o card mostra temperatura e valor |
 | `15-opencode.json` | `js/service_worker.js` | Sem OpenCode Zen nas variações/assistente | Provedor `opencode` (https://opencode.ai/zen/v1) e preferência pelo `nemotron-3-ultra-free` |
 | `16-wajs-loader-miss.json` | `js/wa-js.js` | “Module UserPrefs was not found” / “getPushname was not found”: o WA-JS 4.6.0 guardava para sempre um “não encontrado” de módulos que o WhatsApp registra antes de deixar prontos | Mesma correção do WA-JS (commit 3d912125, ainda sem versão no npm): o “não encontrado” vale só 1 s no carregador Meta; e o status só lê o número/nome da conta com o WhatsApp pronto |
+| `17-iframe-allowfullscreen.json` | `js/dashboard.js` | Aviso “Allow attribute will take precedence over 'allowfullscreen'” ao abrir Conversas | O iframe já libera tela cheia pelo `allow="…; fullscreen"`; o atributo antigo `allowFullScreen` saiu |
 | `14-resumo.json` | `js/dashboard.js` | Sem resumo das conversas | Cartão “Resumo do WhatsApp” na Visão geral (`js/summary-card.js`) e rota `#/resumo` (`resumo.html` em iframe) |
 | `13-modulo-email.json` | `js/dashboard.js` | Sem e-mail marketing | Módulo `email` (padrão desligado), item “E-mail” no menu e rota `#/email` (`email.html` em iframe) |
 | `12-importar-grupos.json` | `js/dashboard.js` | Importar do WhatsApp só lia agenda e conversas | Escolha “Agenda e conversas” / “Grupos” no topo da aba “Do WhatsApp” (`js/group-import.js`) |
@@ -417,6 +423,7 @@ node patches/patch.mjs js/dashboard.js patches/13-modulo-email.json
 node patches/patch.mjs js/dashboard.js patches/14-resumo.json
 node patches/patch.mjs js/service_worker.js patches/15-opencode.json
 node patches/patch.mjs js/wa-js.js patches/16-wajs-loader-miss.json
+node patches/patch.mjs js/dashboard.js patches/17-iframe-allowfullscreen.json
 ```
 
 `options.html`, `js/ia-options.js` e as entradas `options_ui` / `https://api.groq.com/*` do `manifest.json` não são patches: copie-os para o build novo.
