@@ -1,0 +1,110 @@
+// Servidor MCP local: protocolo por stdio e a porta WebSocket fechada para sites.
+// Rodar: node --test tests/*.test.mjs
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import net from "node:net";
+import crypto from "node:crypto";
+
+const server = new URL("../mcp/orbita-mcp.mjs", import.meta.url).pathname;
+const PORT = 18000 + Math.floor(Math.random() * 900);
+
+function start(env = {}) {
+  const p = spawn(process.execPath, [server], { env: { ...process.env, ORBITA_MCP_PORT: String(PORT), ...env }, stdio: ["pipe", "pipe", "pipe"] });
+  let buf = "";
+  const got = [];
+  p.stdout.on("data", (d) => {
+    buf += d;
+    let i;
+    while ((i = buf.indexOf("\n")) >= 0) {
+      got.push(JSON.parse(buf.slice(0, i)));
+      buf = buf.slice(i + 1);
+    }
+  });
+  const send = (m) => p.stdin.write(`${JSON.stringify(m)}\n`);
+  const wait = async (id) => {
+    for (let i = 0; i < 100; i++) {
+      const r = got.find((m) => m.id === id);
+      if (r) return r;
+      await new Promise((res) => setTimeout(res, 30));
+    }
+    throw new Error("sem resposta");
+  };
+  return { p, send, wait };
+}
+// handshake WebSocket "na mão", com a origem escolhida
+function upgrade(origin) {
+  return new Promise((resolve) => {
+    const s = net.connect(PORT, "127.0.0.1", () => {
+      s.write(`GET /orbita HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ${crypto.randomBytes(16).toString("base64")}\r\nOrigin: ${origin}\r\n\r\n`);
+    });
+    let data = Buffer.alloc(0);
+    s.on("data", (d) => (data = Buffer.concat([data, d])));
+    setTimeout(() => {
+      s.destroy();
+      resolve(data);
+    }, 400);
+  });
+}
+function frame(obj) {
+  const payload = Buffer.from(JSON.stringify(obj));
+  const mask = crypto.randomBytes(4);
+  const head = payload.length < 126 ? Buffer.from([0x81, 0x80 | payload.length]) : Buffer.from([0x81, 0x80 | 126, payload.length >> 8, payload.length & 255]);
+  return Buffer.concat([head, mask, Buffer.from(payload.map((b, i) => b ^ mask[i % 4]))]);
+}
+
+test("protocolo MCP: initialize, tools, prompts e erro amigável sem a extensão", async () => {
+  const s = start({ ORBITA_MCP_TOKEN: "tok" });
+  s.send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", clientInfo: { name: "x", version: "1" } } });
+  const init = await s.wait(1);
+  assert.equal(init.result.protocolVersion, "2024-11-05");
+  assert.deepEqual(init.result.capabilities, { tools: { listChanged: true }, prompts: {} });
+  s.send({ jsonrpc: "2.0", method: "notifications/initialized" });
+  s.send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
+  const tools = (await s.wait(2)).result.tools;
+  assert.equal(tools.length, 36);
+  const send = tools.find((t) => t.name === "send_message");
+  assert.equal(send.annotations.destructiveHint, true);
+  assert.equal(tools.find((t) => t.name === "list_leads").annotations.readOnlyHint, true);
+  s.send({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_leads", arguments: {} } });
+  const r = (await s.wait(3)).result;
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /não está conectada/);
+  s.send({ jsonrpc: "2.0", id: 4, method: "prompts/get", params: { name: "organizar_leads", arguments: { limite: "5" } } });
+  assert.match((await s.wait(4)).result.messages[0].content.text, /Liste até 5 leads/);
+  s.send({ jsonrpc: "2.0", id: 5, method: "resources/list" });
+  assert.equal((await s.wait(5)).error.code, -32601);
+  s.send({ jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "nao_existe" } });
+  assert.equal((await s.wait(6)).error.code, -32602);
+  s.p.kill();
+});
+
+test("WebSocket: sites (outra origem) são recusados; token errado derruba; token certo libera", async () => {
+  const s = start({ ORBITA_MCP_TOKEN: "certo" });
+  await new Promise((r) => setTimeout(r, 400));
+  assert.match((await upgrade("https://site-malicioso.com")).toString(), /^HTTP\/1\.1 403/);
+  // token errado → close 4001
+  const bad = await new Promise((resolve) => {
+    const sock = net.connect(PORT, "127.0.0.1", () => sock.write(`GET /orbita HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ${crypto.randomBytes(16).toString("base64")}\r\nOrigin: chrome-extension://abc\r\n\r\n`));
+    let data = Buffer.alloc(0);
+    sock.on("data", (d) => {
+      data = Buffer.concat([data, d]);
+      if (data.includes("101 Switching")) sock.write(frame({ type: "hello", token: "errado", allowed: [] }));
+    });
+    sock.on("close", () => resolve(data));
+  });
+  const close = bad.subarray(bad.indexOf("\r\n\r\n") + 4);
+  assert.equal(close[0], 0x88);
+  assert.equal(close.readUInt16BE(2), 4001);
+  // token certo → a lista de ferramentas passa a respeitar as permissões da extensão
+  const sock = net.connect(PORT, "127.0.0.1", () => sock.write(`GET /orbita HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ${crypto.randomBytes(16).toString("base64")}\r\nOrigin: chrome-extension://abc\r\n\r\n`));
+  await new Promise((r) => sock.on("data", (d) => d.includes("101 Switching") && r()));
+  sock.write(frame({ type: "hello", token: "certo", allowed: ["orbita_status", "list_leads"] }));
+  await new Promise((r) => setTimeout(r, 300));
+  s.send({ jsonrpc: "2.0", id: 1, method: "tools/list" });
+  assert.deepEqual((await s.wait(1)).result.tools.map((t) => t.name), ["orbita_status", "list_leads"]);
+  s.send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "send_message", arguments: { text: "x" } } });
+  assert.match((await s.wait(2)).result.content[0].text, /sem permissão/);
+  sock.destroy();
+  s.p.kill();
+});

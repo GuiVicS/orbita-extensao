@@ -1,6 +1,6 @@
 // Service worker da extensão: carrega o build original e acrescenta os
 // handlers das respostas rápidas sem alterar o bundle minificado.
-importScripts("service_worker.js", "qr-common.js", "chat-common.js", "chat-translate.js", "chat-transcribe.js", "chat-voice.js", "chat-dub.js", "chat-summary.js", "chat-sync.js", "cloud-sync.js");
+importScripts("service_worker.js", "qr-common.js", "chat-common.js", "chat-translate.js", "chat-transcribe.js", "chat-voice.js", "chat-dub.js", "chat-summary.js", "chat-sync.js", "cloud-sync.js", "crm-edit.js", "mcp-tools.js", "mcp-handlers.js", "mcp-bridge.js");
 
 // ---- Órbita Cloud: sincronização automática com o Supabase do usuário
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -56,8 +56,8 @@ async function selfCheck() {
 }
 
 reopenTabs().catch(() => {});
-selfCheck();
-globalThis.__orbitaSelfCheck = { selfCheck, isStale, reopenTabs }; // para os testes
+const firstCheck = selfCheck();
+globalThis.__orbitaSelfCheck = { selfCheck, isStale, reopenTabs, firstCheck }; // para os testes
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.channel !== "orbita:qr" || sender.id !== chrome.runtime.id) return false;

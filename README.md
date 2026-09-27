@@ -4,6 +4,32 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.22.0
+
+- **Agente local (MCP).** Um agente de IA no seu computador (Claude Desktop, Claude Code, Cursor, Windsurf…) passa a usar a Órbita pelo protocolo MCP: ler e analisar conversas, organizar leads, agendar, montar listas e rascunhos de campanha e, se você permitir, enviar mensagens.
+  - **Como liga:** Opções → **Agente local (MCP)** → Ligar, e depois **Copiar configuração** (Claude Desktop, Claude Code ou JSON genérico) para colar no agente.
+  - **Como funciona:** o agente inicia `mcp/orbita-mcp.mjs`, que vem na pasta da extensão e só precisa do Node.js 18+. A extensão conecta sozinha em `127.0.0.1`.
+  - **Segurança:** a conexão exige um **token**, e sites abertos no navegador não conseguem conectar. Nada sai do computador por esse caminho.
+- **36 ferramentas**, cada uma com liga/desliga próprio, em três grupos:
+  - **Ler** (ligado): situação geral, conversas (inclusive "fora do CRM"), mensagens com tradução e transcrição, busca nas mensagens, conversas esperando resposta, métricas do atendimento (tempo de resposta, horários de pico), funil, etiquetas, relatório do funil, leads com filtros, ficha completa, listas, agenda, campanhas, respostas rápidas, último resumo, grupos e participantes, transcrever áudio.
+  - **Organizar** (ligado):
+    - atualizar lead (etapa, etiquetas, ficha, negócio);
+    - **mover vários leads de uma vez**, por telefones ou filtro, com simulação antes;
+    - notas, atividades com próximo passo, criar etapa;
+    - agendar e alterar compromissos (com o mesmo lembrete do painel);
+    - criar listas e adicionar contatos;
+    - **rascunho** de campanha (quem inicia é você);
+    - tradução da conversa, "IA responde este cliente", marcar como lida.
+  - **Enviar mensagens pelo WhatsApp** (desligado por padrão):
+    - enviar texto (traduz se a conversa tiver tradução) e resposta rápida;
+    - com **"Pedir minha confirmação"** ligado, cada envio aparece para você aprovar (notificação e nas Opções); sem resposta em 2 minutos, é cancelado.
+- **7 roteiros prontos** (prompts do MCP): Organizar os leads, Analisar conversas, Follow-up de leads parados, Qualificar novos contatos, Resumo do dia, Relatório semanal e Preparar campanha.
+- **Registro de atividade**: cada ação do agente fica anotada em Opções → Agente local.
+- **Fora do backup e da Órbita Cloud**: o token e o registro do agente.
+- **Dublagem só com tradução**:
+  - áudios são dublados apenas em conversa com a **tradução ligada**;
+  - sem tradução, a sua gravação vai como está (mensagem de voz comum, na sua voz) e os áudios recebidos não são dublados.
+
 ## Novidades da 1.21.0
 
 - **Órbita Cloud (Supabase).** Em **Opções → Órbita Cloud**, o botão **Habilitar Cloud** abre um assistente de 5 passos:
@@ -194,7 +220,7 @@ aba do WhatsApp (js/chat-page.js, WA-JS) ⇄ js/chat-content.js ⇄ porta "orbit
 ```sh
 node --test tests/*.test.mjs            # unitários (motor de tradução, transcrição, voz, utilidades)
 npm i -D playwright && npx playwright install chromium
-node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect, stale-worker, sticker, emoji-sticker, groups, dub, dub-incoming, reply-mention, group-import, email, summary, ai-providers, cloud
+node tests/e2e/chat-sync.e2e.mjs        # e também: conversas-ui, translation, audio, voice, options, fullscreen, crm-panel, avatar, media, chat-quick-replies, module-toggle, delete, lead-form, attach, autocorrect, stale-worker, sticker, emoji-sticker, groups, dub, dub-incoming, reply-mention, group-import, email, summary, ai-providers, cloud, mcp
 ```
 
 Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web simulado (`tests/e2e/fake-whatsapp.html`) e provedores de IA/voz simulados — nenhuma chave real é usada.

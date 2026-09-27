@@ -22,6 +22,8 @@ await page.goto(`chrome-extension://${id}/conversas.html`);
 await page.waitForSelector(".status");
 assert.equal(await page.locator('[aria-labelledby="stTitle"]').count(), 0); // tudo em dia: sem aviso
 
+// espera a conferência automática do início terminar (senão ela veria a simulação abaixo e recarregaria de verdade)
+await sw.evaluate(() => globalThis.__orbitaSelfCheck.firstCheck);
 // simula o service worker antigo: não conhece "chat.sendFile"
 await sw.evaluate(() => (globalThis.OrbitaChat.OPS.SEND_FILE = "__removida__"));
 const r = await page.evaluate(() => chrome.runtime.sendMessage({ channel: "orbita:chat", op: "chat.sendFile" }));

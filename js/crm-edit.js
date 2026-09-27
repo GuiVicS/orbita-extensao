@@ -188,5 +188,5 @@
     return digits;
   }
 
-  globalThis.OrbitaCrm = { load, stages, setStage, setTags, addNote, removeHistory, setAutoReply, clearAttention, rename, addToCrm, WHATSAPP_LIST };
+  globalThis.OrbitaCrm = { load, stages, setStage, setTags, addNote, removeHistory, setAutoReply, clearAttention, rename, addToCrm, patch: upsert, entry, cleanTags, notify, WHATSAPP_LIST };
 })();

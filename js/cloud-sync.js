@@ -30,7 +30,7 @@
   const CHAT_STORES = ["chats", "messages", "meta", "stickers"];
   const MAIN_SKIP = ["media", "logs"]; // arquivos e registro técnico ficam só aqui
   // chaves do chrome.storage que NUNCA vão para a nuvem
-  const STORAGE_SKIP = /^orbita:(cloud:|chat:secrets|email:secrets|qr:media:|reopen$|selfReload$)/;
+  const STORAGE_SKIP = /^orbita:(cloud:|mcp|chat:secrets|email:secrets|qr:media:|reopen$|selfReload$)/;
 
   const SQL = `-- Órbita Cloud: tabela única com RLS por usuário (rode uma vez)
 create table if not exists public.${TABLE} (

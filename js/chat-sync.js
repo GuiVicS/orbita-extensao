@@ -1019,6 +1019,9 @@
     }
   }
 
+  // o Agente local (MCP, js/mcp-handlers.js) usa as mesmas operações, dentro do service worker
+  globalThis.OrbitaChatOps = { handle, status: () => ({ ...status }) };
+
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg?.channel !== C.CHANNEL) return false;
     if (sender.id !== chrome.runtime.id || !sender.url?.startsWith(chrome.runtime.getURL(""))) return false;
