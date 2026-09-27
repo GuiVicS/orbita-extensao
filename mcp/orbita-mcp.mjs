@@ -422,6 +422,54 @@ function start() {
 start();
 if (!TOKEN) log("ATENÇÃO: defina ORBITA_MCP_TOKEN com o token de Opções → Agente local (MCP).");
 
+// ---------------------------------------------------------------- send_file: leitura do arquivo
+// Quem lê é o servidor principal (o que está com a extensão): o arquivo vai em
+// base64 pelo WebSocket e a extensão envia pelo mesmo caminho dos anexos das Conversas.
+const FILE_MAX = 100 * 1024 * 1024; // limite dos anexos da Órbita (e dos documentos no WhatsApp Web)
+const MIME = {
+  jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif", bmp: "image/bmp", heic: "image/heic",
+  mp4: "video/mp4", m4v: "video/mp4", mov: "video/quicktime", "3gp": "video/3gpp", webm: "video/webm", mkv: "video/x-matroska", avi: "video/x-msvideo",
+  mp3: "audio/mpeg", ogg: "audio/ogg", opus: "audio/ogg", m4a: "audio/mp4", aac: "audio/aac", wav: "audio/wav", amr: "audio/amr", flac: "audio/flac",
+  pdf: "application/pdf", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", csv: "text/csv",
+  ppt: "application/vnd.ms-powerpoint", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  txt: "text/plain", html: "text/html", json: "application/json", xml: "application/xml", zip: "application/zip", rar: "application/vnd.rar", "7z": "application/x-7z-compressed",
+  odt: "application/vnd.oasis.opendocument.text", ods: "application/vnd.oasis.opendocument.spreadsheet", svg: "image/svg+xml", ics: "text/calendar", vcf: "text/vcard",
+};
+// o que o WhatsApp aceita como mídia (acima disso, ou em outros formatos, vai como documento)
+const MEDIA = { image: { max: 16 * 1024 * 1024, ext: ["jpg", "jpeg", "png", "webp"] }, video: { max: 64 * 1024 * 1024, ext: ["mp4", "m4v", "3gp", "mov"] }, audio: { max: 16 * 1024 * 1024, ext: ["mp3", "ogg", "opus", "m4a", "aac", "amr", "wav"] } };
+const mb = (n) => `${(n / 1024 / 1024).toFixed(1).replace(".", ",")} MB`;
+function readFileArg(args) {
+  let file = String(args.filePath || "").trim().replace(/^["']+|["']+$/g, "");
+  if (!file) throw new Error("Informe filePath: o caminho completo do arquivo no computador.");
+  if (file.startsWith("file://")) file = fileURLToPath(file);
+  if (!path.isAbsolute(file)) throw new Error(`Use o caminho completo (absoluto) do arquivo, ex.: C:\\Users\\voce\\Documentos\\arquivo.pdf. Recebido: ${file}`);
+  let st;
+  try {
+    st = fs.statSync(file);
+  } catch {
+    throw new Error(`Arquivo não encontrado: ${file}`);
+  }
+  if (!st.isFile()) throw new Error(`Não é um arquivo: ${file}`);
+  if (st.size === 0) throw new Error(`O arquivo está vazio: ${file}`);
+  if (st.size > FILE_MAX) throw new Error(`Arquivo grande demais: ${mb(st.size)} (máx. ${mb(FILE_MAX)}). Comprima ou divida o arquivo.`);
+  const fileName = path.basename(file);
+  const ext = path.extname(fileName).slice(1).toLowerCase();
+  const mimeType = MIME[ext] || "application/octet-stream";
+  let kind = "document";
+  let note = null;
+  for (const [k, m] of Object.entries(MEDIA)) {
+    if (!m.ext.includes(ext)) continue;
+    if (args.asDocument) break;
+    if (st.size > m.max) note = `Maior que ${mb(m.max)}: vai como documento (limite do WhatsApp para ${k === "image" ? "fotos" : k === "video" ? "vídeos" : "áudios"}).`;
+    else kind = k;
+    break;
+  }
+  const { filePath, ...rest } = args;
+  log(`send_file: ${fileName} (${mb(st.size)}, ${mimeType}, como ${kind})`);
+  return { ...rest, fileName, mimeType, kind, size: st.size, note, fileBase64: fs.readFileSync(file).toString("base64") };
+}
+
 function currentAllowed() {
   if (mode === "hub") return ext ? ext.allowed : null;
   if (mode === "relay") return remote?.ext ? remote.allowed : null;
@@ -433,6 +481,13 @@ function callExtension(name, args, client = mcpClient) {
   const connected = mode === "hub" ? Boolean(ext) : Boolean(remote?.ext);
   if (!connected) return Promise.reject(new Error("A Órbita não está conectada. Abra o Chrome com a extensão Órbita e ligue Opções → Agente local (MCP) — a conexão é automática em alguns segundos."));
   if (!currentAllowed().has(name)) return Promise.reject(new Error(`A ferramenta ${name} está sem permissão. Libere em Opções → Agente local (MCP) da Órbita.`));
+  if (name === "send_file" && mode === "hub") {
+    try {
+      args = readFileArg(args || {});
+    } catch (e) {
+      return Promise.reject(e);
+    }
+  }
   const id = crypto.randomUUID();
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -458,7 +513,7 @@ const INSTRUCTIONS = `Órbita é o CRM + WhatsApp do usuário (extensão do Chro
 - Comece com orbita_status. Datas em ISO 8601 com fuso do usuário.
 - Para analisar uma conversa use get_messages (texto original, tradução e transcrição de áudio vêm juntos).
 - Para organizar leads: list_stages, list_leads, get_lead e depois update_lead / add_lead_note / log_activity.
-- Nunca envie mensagens (send_message, send_voice, send_quick_reply) sem o usuário pedir ou aprovar o texto. send_voice gera um áudio com a voz do usuário (Fish Audio) e gasta créditos. O envio pode pedir confirmação na tela do usuário.
+- Nunca envie mensagens (send_message, send_voice, send_file, send_quick_reply) sem o usuário pedir ou aprovar o texto. send_voice gera um áudio com a voz do usuário (Fish Audio) e gasta créditos. send_file envia um arquivo do computador pelo caminho completo (até 100 MB). O envio pode pedir confirmação na tela do usuário.
 - Campanhas são criadas só como rascunho; o usuário revisa e inicia no painel.`;
 
 function toolList() {

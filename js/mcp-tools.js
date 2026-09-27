@@ -147,6 +147,17 @@
       description: "Gera um áudio com a voz configurada no Fish Audio (Opções → Conversas) a partir do texto e envia como mensagem de voz no WhatsApp. Com a tradução da conversa ligada, escreva em português: a Órbita traduz e a voz fala no idioma do contato. Gasta créditos do Fish Audio. Se “Pedir minha confirmação a cada envio” estiver ligado, espera o usuário aprovar.",
       inputSchema: obj({ chatId: CHAT, phone: PHONE, text: str("O que a voz vai falar (curto e natural, como numa mensagem de voz)"), replyTo: str("Id da mensagem a responder (opcional)") }, ["text"]),
     },
+    {
+      name: "send_file", level: "send", title: "Enviar Arquivo/Mídia",
+      description: "Envia um arquivo físico (imagem, vídeo, áudio, PDF, documento) para uma conversa no WhatsApp a partir de um caminho local no computador. Foto e vídeo vão como mídia (com legenda), áudio como arquivo de áudio, o resto como documento. Até 100 MB. Com tradução ligada, escreva a legenda em português. Se “Pedir minha confirmação a cada envio” estiver ligado, espera o usuário aprovar.",
+      inputSchema: obj({
+        chatId: CHAT, phone: PHONE,
+        filePath: str("Caminho absoluto do arquivo no computador (ex.: C:\\Users\\nome\\arquivo.jpg)"),
+        caption: str("Legenda (opcional; não vale para áudio)"),
+        asDocument: bool("Enviar como documento, sem compressão (ex.: foto em qualidade original)"),
+        replyTo: str("Id da mensagem a responder (opcional)"),
+      }, ["filePath"]),
+    },
     { name: "send_quick_reply", level: "send", title: "Enviar resposta rápida", description: "Envia uma resposta rápida cadastrada (texto, áudio, mídia) numa conversa. Pode esperar a aprovação do usuário (mesma opção do send_message).", inputSchema: obj({ chatId: CHAT, quickReplyId: str("Id da resposta rápida (list_quick_replies)") }, ["chatId", "quickReplyId"]) },
   ];
 

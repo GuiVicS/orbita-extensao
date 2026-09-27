@@ -758,6 +758,32 @@
       return { ok: true, chatId, messageId: msg.id, spoken: g.text, durationSec: Math.round(conv.duration), lang: g.lang, ...(g.text !== textPt ? { translatedFrom: textPt } : {}), ...(g.notice ? { notice: g.notice } : {}) };
     },
 
+    async send_file(a, ctx) {
+      if (!a.fileBase64) fail("O servidor local não mandou o arquivo. Atualize o agente: o servidor fica em mcp/orbita-mcp.mjs, na pasta da extensão (reinicie o agente).");
+      const chatId = await resolveChat(a);
+      if (!waStatus().ready) fail("Abra o WhatsApp Web numa aba do Chrome para enviar.");
+      const bin = atob(String(a.fileBase64));
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const fileName = String(a.fileName || "arquivo");
+      const blob = new Blob([bytes], { type: String(a.mimeType || "application/octet-stream") });
+      const kind = ["image", "video", "audio", "document"].includes(a.kind) ? a.kind : "document";
+      const chat = await C.getChat(chatId);
+      let caption = kind === "audio" ? "" : String(a.caption || "").trim();
+      let captionPt;
+      if (caption && chat?.translation?.enabled) {
+        captionPt = caption;
+        caption = (await ops().handle({ op: C.OPS.TRANSLATE_PREVIEW, chatId, textPt: captionPt })).translated;
+      }
+      const label = { image: "🖼️ Foto", video: "🎬 Vídeo", audio: "🎵 Áudio", document: "📄 Documento" }[kind];
+      const size = `${(blob.size / 1024 / 1024).toFixed(1).replace(".", ",")} MB`;
+      await ctx.confirm({ title: `Enviar ${fileName} para ${chatName(chat) || chatId.split("@")[0]}?`, message: `${label} · ${size}${caption ? ` · “${caption.slice(0, 120)}”` : ""}`, preview: captionPt ? `Legenda em português: ${captionPt}` : a.note || "" });
+      const uploadId = `mcp-${uuid()}`;
+      await C.putMedia(`up:${uploadId}`, blob, { chatId, mime: blob.type });
+      const msg = await ops().handle({ op: C.OPS.SEND_FILE, chatId, uploadId, type: kind, filename: fileName, ...(caption ? { caption } : {}), ...(captionPt ? { captionPt } : {}), ...(a.replyTo ? { quotedId: String(a.replyTo) } : {}) });
+      return { ok: true, chatId, messageId: msg.id, fileName, sentAs: kind, sizeBytes: blob.size, ...(caption ? { caption } : {}), ...(captionPt ? { translatedFrom: captionPt } : {}), ...(a.note ? { note: a.note } : {}) };
+    },
+
     async send_quick_reply(a, ctx) {
       const chatId = await resolveChat(a);
       if (!waStatus().ready) fail("Abra o WhatsApp Web numa aba do Chrome para enviar.");

@@ -4,6 +4,21 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.24.0
+
+- **Agente local (MCP): enviar arquivos do computador.** Nova ação **`send_file`** (grupo "Enviar mensagens"). O agente informa o **caminho completo** do arquivo (ex.: `C:\Users\voce\Documentos\proposta.pdf`), com legenda opcional, e a Órbita envia pela conversa.
+  - **Como vai:**
+    - fotos (jpg, png, webp) e vídeos (mp4, mov, 3gp) vão como mídia, com legenda;
+    - áudios vão como arquivo de áudio;
+    - PDFs, planilhas, textos, zip e o resto vão como **documento**;
+    - `asDocument` manda foto ou vídeo sem compressão.
+  - **Limites:** até **100 MB**. Foto acima de 16 MB, vídeo acima de 64 MB e áudio acima de 16 MB vão como documento automaticamente, com aviso.
+  - **Tradução:** com tradução ligada, a legenda é escrita em português e traduzida antes.
+  - **Confirmação:** respeita "Pedir minha confirmação a cada envio" (mostra nome, tipo e tamanho).
+  - **Por dentro:** quem lê o arquivo é o servidor local principal, e a extensão envia pelo mesmo caminho dos anexos das Conversas. Com vários agentes abertos, o arquivo é lido uma vez só.
+  - **Erros claros:** arquivo não encontrado, caminho relativo, pasta no lugar de arquivo, arquivo vazio ou grande demais. O registro de atividade guarda só o tamanho, não o arquivo.
+  - **Atualize o agente:** o servidor novo vem na pasta da extensão; reinicie o agente (OpenCode, Claude, Antigravity…) depois de atualizar.
+
 ## Novidades da 1.23.0
 
 - **Agente local (MCP): áudio com a sua voz (Fish Audio).** Nova ação **`send_voice`** (grupo "Enviar mensagens"):

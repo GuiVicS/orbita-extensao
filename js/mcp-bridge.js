@@ -130,7 +130,7 @@
   }
   function shortArgs(a) {
     try {
-      const s = JSON.stringify(a || {});
+      const s = JSON.stringify(a || {}, (k, v) => (k === "fileBase64" ? `[${Math.round((v?.length || 0) * 0.75 / 1024)} KB]` : v));
       return s.length > 300 ? `${s.slice(0, 297)}…` : s;
     } catch {
       return "";

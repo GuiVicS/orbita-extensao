@@ -65,7 +65,7 @@ test("protocolo MCP: initialize, tools, prompts e erro amigável sem a extensão
   s.send({ jsonrpc: "2.0", method: "notifications/initialized" });
   s.send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
   const tools = (await s.wait(2)).result.tools;
-  assert.equal(tools.length, 37);
+  assert.equal(tools.length, 38);
   const send = tools.find((t) => t.name === "send_message");
   assert.equal(send.annotations.destructiveHint, true);
   assert.equal(tools.find((t) => t.name === "list_leads").annotations.readOnlyHint, true);
@@ -211,4 +211,26 @@ test("vários agentes ao mesmo tempo, sem derrubar a extensão; o segundo assume
   assert.equal(JSON.parse((await relay.wait(4)).result.content[0].text).name, "list_leads");
   relay.p.kill();
   ext.sock.destroy();
+});
+
+test("send_file: o servidor principal lê o arquivo (também quando o pedido vem de outro agente)", async () => {
+  const fsm = await import("node:fs");
+  const os = await import("node:os");
+  const port = PORT + 90;
+  const env = { ORBITA_MCP_TOKEN: "tk", ORBITA_MCP_PORT: String(port) };
+  const dir = fsm.mkdtempSync(`${os.tmpdir()}/orbita-file-`);
+  fsm.writeFileSync(`${dir}/nota.pdf`, Buffer.from("%PDF-1.4 teste"));
+  const hub = spawnAt(env);
+  await new Promise((r) => setTimeout(r, 700));
+  await fakeExtension(port, { token: "tk", allowed: ["send_file"], reply: (m) => ({ keys: Object.keys(m.args).sort(), name: m.args.fileName, mime: m.args.mimeType, kind: m.args.kind, text: Buffer.from(m.args.fileBase64, "base64").toString() }) });
+  const relay = spawnAt(env);
+  await new Promise((r) => setTimeout(r, 900));
+  relay.send({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "send_file", arguments: { chatId: "1@c.us", filePath: `${dir}/nota.pdf`, caption: "oi" } } });
+  const r = JSON.parse((await relay.wait(1)).result.content[0].text);
+  assert.deepEqual(r, { keys: ["caption", "chatId", "fileBase64", "fileName", "kind", "mimeType", "note", "size"], name: "nota.pdf", mime: "application/pdf", kind: "document", text: "%PDF-1.4 teste" });
+  hub.send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "send_file", arguments: { chatId: "1@c.us", filePath: `${dir}/sumiu.pdf` } } });
+  assert.match((await hub.wait(2)).result.content[0].text, /Arquivo não encontrado/);
+  hub.p.kill();
+  relay.p.kill();
+  fsm.rmSync(dir, { recursive: true, force: true });
 });

@@ -289,6 +289,41 @@ assert.equal(vf.isPtt, true, "mensagem de voz");
 assert.equal(vf.oggMagic, true, "OGG/Opus");
 assert.ok(voice.durationSec >= 1 && voice.durationSec <= 3);
 
+// ---- arquivo do computador (send_file): o servidor lê, a extensão envia como anexo
+const tmp = fs.mkdtempSync(here + ".mcp-files-");
+const rnd = (n) => Buffer.from(Array.from({ length: n }, (_, i) => (i * 7919 + 13) % 256));
+const sum = (b) => [...b].reduce((x, y) => (x + y) % 1000003, 0);
+const png = rnd(60000);
+fs.writeFileSync(`${tmp}/foto produto.png`, png);
+const pdf = rnd(120000);
+fs.writeFileSync(`${tmp}/proposta.pdf`, pdf);
+fs.writeFileSync(`${tmp}/grande.jpg`, rnd(17 * 1024 * 1024));
+const files = () => wa.evaluate(() => window.__files || []);
+const f0 = (await files()).length;
+const sentPng = await ag.tool("send_file", { chatId: "5511999998888@c.us", filePath: `${tmp}/foto produto.png`, caption: "Olha o produto novo" });
+console.log("foto:", sentPng);
+assert.equal(sentPng.ok, true, JSON.stringify(sentPng));
+assert.equal(sentPng.sentAs, "image");
+await waitFor(async () => (await files()).length > f0);
+let got = (await files()).at(-1);
+assert.deepEqual([got.type, got.name, got.mime, got.size, got.caption, got.sum], ["image", "foto produto.png", "image/png", png.length, "Olha o produto novo", sum(png)]);
+const sentPdf = await ag.tool("send_file", { phone: "5511999998888", filePath: `"${tmp}/proposta.pdf"`, caption: "Segue a proposta" });
+assert.equal(sentPdf.sentAs, "document");
+await waitFor(async () => (await files()).length > f0 + 1);
+got = (await files()).at(-1);
+assert.deepEqual([got.type, got.name, got.mime, got.sum], ["document", "proposta.pdf", "application/pdf", sum(pdf)]);
+const big = await ag.tool("send_file", { chatId: "5511999998888@c.us", filePath: `${tmp}/grande.jpg` });
+assert.equal(big.sentAs, "document", "foto acima de 16 MB vai como documento");
+assert.match(big.note, /Maior que 16,0 MB/);
+const asDoc = await ag.tool("send_file", { chatId: "5511999998888@c.us", filePath: `${tmp}/foto produto.png`, asDocument: true });
+assert.equal(asDoc.sentAs, "document");
+assert.match((await ag.tool("send_file", { chatId: "5511999998888@c.us", filePath: `${tmp}/nao-existe.pdf` })).error, /Arquivo não encontrado/);
+assert.match((await ag.tool("send_file", { chatId: "5511999998888@c.us", filePath: "relativo/arquivo.pdf" })).error, /caminho completo/);
+assert.match((await ag.tool("send_file", { chatId: "5511999998888@c.us", filePath: tmp })).error, /Não é um arquivo/);
+const logged = await opt.evaluate(async () => (await chrome.storage.local.get("orbita:mcp:log"))["orbita:mcp:log"].find((l) => l.tool === "send_file"));
+assert.ok(logged.args.length < 400 && /KB\]/.test(logged.args), "o registro não guarda o arquivo inteiro");
+fs.rmSync(tmp, { recursive: true, force: true });
+
 // ---- registro de atividade
 await opt.click("#mcpSec details:has(#mcpLog) summary");
 await opt.waitForFunction(() => /Enviar mensagem no WhatsApp/.test(document.getElementById("mcpLog").textContent));
