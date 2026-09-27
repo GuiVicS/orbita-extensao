@@ -142,6 +142,11 @@
       description: "Envia uma mensagem de texto pelo WhatsApp Web. Se a conversa tiver tradução ligada, escreva em português: a Órbita traduz antes. Se “Pedir minha confirmação a cada envio” estiver ligado (Opções → Agente local), espera o usuário aprovar no computador.",
       inputSchema: obj({ chatId: CHAT, phone: PHONE, text: str("Texto (formatação do WhatsApp: *negrito*, _itálico_)"), replyTo: str("Id da mensagem a responder (opcional)") }, ["text"]),
     },
+    {
+      name: "send_voice", level: "send", title: "Enviar áudio com voz (Fish Audio)",
+      description: "Gera um áudio com a voz configurada no Fish Audio (Opções → Conversas) a partir do texto e envia como mensagem de voz no WhatsApp. Com a tradução da conversa ligada, escreva em português: a Órbita traduz e a voz fala no idioma do contato. Gasta créditos do Fish Audio. Se “Pedir minha confirmação a cada envio” estiver ligado, espera o usuário aprovar.",
+      inputSchema: obj({ chatId: CHAT, phone: PHONE, text: str("O que a voz vai falar (curto e natural, como numa mensagem de voz)"), replyTo: str("Id da mensagem a responder (opcional)") }, ["text"]),
+    },
     { name: "send_quick_reply", level: "send", title: "Enviar resposta rápida", description: "Envia uma resposta rápida cadastrada (texto, áudio, mídia) numa conversa. Pode esperar a aprovação do usuário (mesma opção do send_message).", inputSchema: obj({ chatId: CHAT, quickReplyId: str("Id da resposta rápida (list_quick_replies)") }, ["chatId", "quickReplyId"]) },
   ];
 

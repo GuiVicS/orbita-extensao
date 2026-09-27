@@ -458,7 +458,7 @@ const INSTRUCTIONS = `Órbita é o CRM + WhatsApp do usuário (extensão do Chro
 - Comece com orbita_status. Datas em ISO 8601 com fuso do usuário.
 - Para analisar uma conversa use get_messages (texto original, tradução e transcrição de áudio vêm juntos).
 - Para organizar leads: list_stages, list_leads, get_lead e depois update_lead / add_lead_note / log_activity.
-- Nunca envie mensagens (send_message, send_quick_reply) sem o usuário pedir ou aprovar o texto. O envio pode pedir confirmação na tela do usuário.
+- Nunca envie mensagens (send_message, send_voice, send_quick_reply) sem o usuário pedir ou aprovar o texto. send_voice gera um áudio com a voz do usuário (Fish Audio) e gasta créditos. O envio pode pedir confirmação na tela do usuário.
 - Campanhas são criadas só como rascunho; o usuário revisa e inicia no painel.`;
 
 function toolList() {

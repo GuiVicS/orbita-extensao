@@ -65,7 +65,7 @@ test("protocolo MCP: initialize, tools, prompts e erro amigável sem a extensão
   s.send({ jsonrpc: "2.0", method: "notifications/initialized" });
   s.send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
   const tools = (await s.wait(2)).result.tools;
-  assert.equal(tools.length, 36);
+  assert.equal(tools.length, 37);
   const send = tools.find((t) => t.name === "send_message");
   assert.equal(send.annotations.destructiveHint, true);
   assert.equal(tools.find((t) => t.name === "list_leads").annotations.readOnlyHint, true);

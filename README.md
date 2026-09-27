@@ -4,6 +4,15 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.23.0
+
+- **Agente local (MCP): áudio com a sua voz (Fish Audio).** Nova ação **`send_voice`** (grupo "Enviar mensagens"):
+  - **Como funciona:** o agente escreve o texto, a Órbita gera o áudio com a voz configurada em Opções → Conversas (Fish Audio) e envia como **mensagem de voz** no WhatsApp.
+  - **Com tradução ligada na conversa:** o agente escreve em português, e a voz fala no idioma do contato.
+  - **Limites e confirmação:** respeita o limite de duração dos áudios. Com "Pedir minha confirmação a cada envio" ligado, mostra o texto e a duração para você aprovar.
+  - **Custo:** gasta créditos do Fish Audio.
+- **Documento invisível (offscreen):** a conversão para o formato de voz do WhatsApp (OGG/Opus) precisa de recursos de áudio que o service worker não tem, então é feita num documento invisível da extensão. Por isso entrou a permissão `offscreen`, que não pede nada ao usuário.
+
 ## Novidades da 1.22.4
 
 - **Envio automático pelo agente local mais fácil de achar.** A opção "Pedir minha confirmação a cada envio" (desmarcada = o agente envia sozinho, sem aprovar cada mensagem) agora aparece também em "Ações permitidas, uma a uma", junto das ações de envio. As duas caixas ficam sincronizadas, e a descrição das ferramentas de envio explica a opção.

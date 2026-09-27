@@ -258,6 +258,37 @@ assert.equal(await opt.locator("#mcpPending [data-decide]").count(), 0, "nada es
 await waitFor(async () => (await wa.evaluate(() => __store["5511999998888@c.us"].length)) > n0);
 assert.equal(await wa.evaluate(() => __store["5511999998888@c.us"].at(-1).body), "Enviada sem confirmação");
 
+// ---- áudio com a voz do Fish Audio (gera → converte no offscreen → mensagem de voz)
+await dash.evaluate(() => chrome.storage.local.set({ "orbita:chat:settings": { privacyAccepted: true, fishVoiceId: "minha-voz", fishModel: "s2.1-pro-free" }, "orbita:chat:secrets": { fishApiKey: "fish_key" } }));
+await sw.evaluate(() => {
+  const wav = (sec) => { const sr = 16000, n = sr * sec, b = new DataView(new ArrayBuffer(44 + n * 2)); const w = (o, t) => [...t].forEach((c, i) => b.setUint8(o + i, c.charCodeAt(0)));
+    w(0, "RIFF"); b.setUint32(4, 36 + n * 2, true); w(8, "WAVEfmt "); b.setUint32(16, 16, true); b.setUint16(20, 1, true); b.setUint16(22, 1, true); b.setUint32(24, sr, true); b.setUint32(28, sr * 2, true); b.setUint16(32, 2, true); b.setUint16(34, 16, true); w(36, "data"); b.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) b.setInt16(44 + i * 2, Math.sin(i / sr * 2 * Math.PI * 220) * 9000, true); return b.buffer; };
+  const real = globalThis.fetch;
+  globalThis.__fishTts = [];
+  globalThis.fetch = async (url, init) => {
+    if (url === "https://api.fish.audio/v1/tts") {
+      globalThis.__fishTts.push({ auth: init.headers.Authorization, body: JSON.parse(init.body) });
+      return new Response(wav(2), { status: 200, headers: { "content-type": "audio/mpeg" } });
+    }
+    return real(url, init);
+  };
+});
+const nv = await wa.evaluate(() => __store["5511999998888@c.us"].length);
+const voice = await ag.tool("send_voice", { chatId: "5511999998888@c.us", text: "Oi John, te mando a proposta hoje." });
+console.log("áudio:", voice);
+assert.equal(voice.ok, true, JSON.stringify(voice));
+assert.equal(voice.spoken, "Oi John, te mando a proposta hoje.");
+const tts = await sw.evaluate(() => globalThis.__fishTts);
+assert.equal(tts.length, 1);
+assert.equal(tts[0].body.reference_id, "minha-voz");
+assert.equal(tts[0].body.text, "Oi John, te mando a proposta hoje.");
+await waitFor(async () => (await wa.evaluate(() => __store["5511999998888@c.us"].length)) > nv);
+const vf = await wa.evaluate(() => window.__lastFile);
+assert.equal(vf.isPtt, true, "mensagem de voz");
+assert.equal(vf.oggMagic, true, "OGG/Opus");
+assert.ok(voice.durationSec >= 1 && voice.durationSec <= 3);
+
 // ---- registro de atividade
 await opt.click("#mcpSec details:has(#mcpLog) summary");
 await opt.waitForFunction(() => /Enviar mensagem no WhatsApp/.test(document.getElementById("mcpLog").textContent));

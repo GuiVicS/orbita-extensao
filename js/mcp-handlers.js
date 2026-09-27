@@ -742,6 +742,22 @@
       return { ok: true, chatId, messageId: msg.id, sentText: out, ...(textPt ? { translatedFrom: textPt } : {}) };
     },
 
+    async send_voice(a, ctx) {
+      const chatId = await resolveChat(a);
+      const textPt = String(a.text || "").trim();
+      if (!textPt) fail("Informe o texto do áudio.");
+      if (!waStatus().ready) fail("Abra o WhatsApp Web numa aba do Chrome para enviar.");
+      const chat = await C.getChat(chatId);
+      // mesma regra das Conversas: com tradução, a voz fala o texto traduzido (a prévia fica guardada)
+      if (chat?.translation?.enabled) await ops().handle({ op: C.OPS.TRANSLATE_PREVIEW, chatId, textPt });
+      const g = await ops().handle({ op: C.OPS.VOICE_PREVIEW, chatId, textPt }); // Fish Audio → MP3 no cache
+      const conv = await toVoiceNote({ mp3Key: g.mp3Key, genKey: `gen:${g.genId}`, text: g.text, chatId });
+      if (conv.duration > g.maxVoiceSec) fail(`O áudio ficou com ${Math.round(conv.duration)} s, acima do limite de ${g.maxVoiceSec} s. Encurte o texto.`);
+      await ctx.confirm({ title: `Enviar áudio para ${chatName(chat) || chatId.split("@")[0]}?`, message: `🎤 ${Math.round(conv.duration)} s: “${g.text.slice(0, 160)}”`, preview: g.text !== textPt ? `Em português: ${textPt}` : "" });
+      const msg = await ops().handle({ op: C.OPS.SEND_AUDIO, chatId, genId: g.genId, ...(a.replyTo ? { quotedId: String(a.replyTo) } : {}) });
+      return { ok: true, chatId, messageId: msg.id, spoken: g.text, durationSec: Math.round(conv.duration), lang: g.lang, ...(g.text !== textPt ? { translatedFrom: textPt } : {}), ...(g.notice ? { notice: g.notice } : {}) };
+    },
+
     async send_quick_reply(a, ctx) {
       const chatId = await resolveChat(a);
       if (!waStatus().ready) fail("Abra o WhatsApp Web numa aba do Chrome para enviar.");
@@ -758,6 +774,24 @@
   };
 
   // ---------------------------------------------------------------- auxiliares
+  // MP3 → OGG/Opus no documento offscreen (o service worker não tem AudioContext)
+  async function toVoiceNote(req) {
+    if (!chrome.offscreen) fail("Este Chrome não permite converter o áudio (chrome.offscreen indisponível). Atualize o Chrome.");
+    const url = chrome.runtime.getURL("offscreen.html");
+    const has = chrome.runtime.getContexts ? (await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"], documentUrls: [url] })).length > 0 : false;
+    if (!has) {
+      try {
+        await chrome.offscreen.createDocument({ url: "offscreen.html", reasons: ["BLOBS"], justification: "Converter o áudio gerado (MP3) no formato de mensagem de voz do WhatsApp." });
+      } catch (e) {
+        if (!/single offscreen|already/i.test(e?.message || "")) throw e;
+      }
+    }
+    const r = await chrome.runtime.sendMessage({ channel: "orbita:offscreen", op: "mp3ToOgg", ...req });
+    if (!r?.ok) fail(`Não consegui converter o áudio: ${r?.error || "sem resposta"}`);
+    return r.data;
+  }
+
+  // ---------------------------------------------------------------- outros auxiliares
   function apptOut(x) {
     return { appointmentId: x.id, title: x.title, phone: x.phone, client: x.clientName || null, start: iso(x.start), durationMin: x.durationMin, reminderMin: x.reminderMin ?? null, status: x.status, description: x.description || null };
   }
