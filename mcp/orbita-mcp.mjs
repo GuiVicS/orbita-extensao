@@ -470,6 +470,31 @@ function readFileArg(args) {
   return { ...rest, fileName, mimeType, kind, size: st.size, note, fileBase64: fs.readFileSync(file).toString("base64") };
 }
 
+// ---------------------------------------------------------------- download_media: grava o arquivo
+const EXT_OF = Object.fromEntries(Object.entries(MIME).map(([e, m]) => [m, e]));
+Object.assign(EXT_OF, { "image/jpeg": "jpg", "audio/ogg": "ogg", "video/mp4": "mp4", "audio/mp4": "m4a", "audio/ogg; codecs=opus": "ogg" });
+function saveDownload(r, args) {
+  const folder = String(args.folder || "").trim().replace(/^["']+|["']+$/g, "") || path.join(os.homedir(), "Downloads", "Orbita");
+  if (!path.isAbsolute(folder)) throw new Error(`Use o caminho completo da pasta (ex.: C:\\Users\\voce\\Downloads). Recebido: ${folder}`);
+  fs.mkdirSync(folder, { recursive: true });
+  const mime = String(r.mimeType || "").split(";")[0].trim();
+  const ext = EXT_OF[r.mimeType] || EXT_OF[mime] || (mime.split("/")[1] || "bin").replace(/[^a-z0-9]/gi, "").slice(0, 5) || "bin";
+  const stamp = String(r.at || "").slice(0, 19).replace(/[:T]/g, "-");
+  let name = String(args.fileName || r.originalName || `${r.type || "midia"}-${stamp || Date.now()}`).replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").trim() || "midia";
+  if (!path.extname(name)) name += `.${ext}`;
+  let file = path.join(folder, name);
+  for (let i = 2; fs.existsSync(file); i++) file = path.join(folder, `${path.basename(name, path.extname(name))} (${i})${path.extname(name)}`);
+  const data = Buffer.from(String(r.fileBase64 || ""), "base64");
+  fs.writeFileSync(file, data);
+  log(`download_media: ${file} (${mb(data.length)})`);
+  const { fileBase64, ...info } = r;
+  const out = { ok: true, filePath: file, fileName: path.basename(file), ...info, sizeBytes: data.length };
+  delete out.size;
+  if (args.view && mime.startsWith("image/") && data.length <= 4 * 1024 * 1024) out.__image = { data: r.fileBase64, mimeType: mime === "image/webp" || mime === "image/png" || mime === "image/gif" ? mime : "image/jpeg" };
+  else if (args.view) out.viewNote = mime.startsWith("image/") ? "Imagem maior que 4 MB: abra o arquivo salvo." : "Só imagens podem ser vistas; o arquivo foi salvo.";
+  return out;
+}
+
 function currentAllowed() {
   if (mode === "hub") return ext ? ext.allowed : null;
   if (mode === "relay") return remote?.ext ? remote.allowed : null;
@@ -494,7 +519,19 @@ function callExtension(name, args, client = mcpClient) {
       pending.delete(id);
       reject(new Error("A extensão demorou demais para responder."));
     }, CALL_TIMEOUT_MS);
-    pending.set(id, { resolve, reject, timer });
+    const save = name === "download_media" && mode === "hub";
+    pending.set(id, {
+      resolve: (r) => {
+        if (!save) return resolve(r);
+        try {
+          resolve(saveDownload(r, args || {}));
+        } catch (e) {
+          reject(new Error(`Não consegui salvar o arquivo: ${e.message}`));
+        }
+      },
+      reject,
+      timer,
+    });
     const target = mode === "hub" ? ext.peer : remote.peer;
     target.send({ type: "call", id, name, args: args || {}, client });
   });
@@ -514,7 +551,9 @@ const INSTRUCTIONS = `Órbita é o CRM + WhatsApp do usuário (extensão do Chro
 - Para analisar uma conversa use get_messages (texto original, tradução e transcrição de áudio vêm juntos).
 - Para organizar leads: list_stages, list_leads, get_lead e depois update_lead / add_lead_note / log_activity.
 - Nunca envie mensagens (send_message, send_voice, send_file, send_quick_reply) sem o usuário pedir ou aprovar o texto. send_voice gera um áudio com a voz do usuário (Fish Audio) e gasta créditos. send_file envia um arquivo do computador pelo caminho completo (até 100 MB). O envio pode pedir confirmação na tela do usuário.
-- Campanhas são criadas só como rascunho; o usuário revisa e inicia no painel.`;
+- Campanhas são criadas só como rascunho; o usuário revisa e inicia no painel.
+- Resumo do WhatsApp: summary_source (todas as páginas) → escreva o resumo citando os ids das mensagens → save_summary. Ele aparece no painel e no celular.
+- Mídias: download_media salva a foto/vídeo/documento de uma mensagem num arquivo (view: true para ver imagens); send_file envia um arquivo do computador.`;
 
 function toolList() {
   const allowed = currentAllowed();
@@ -555,7 +594,9 @@ async function handle(msg) {
       if (!CATALOG.TOOLS.some((t) => t.name === name)) return replyError(id, -32602, `Ferramenta desconhecida: ${name}`);
       try {
         const result = await callExtension(name, params?.arguments || {});
-        return reply(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
+        const image = result?.__image;
+        if (image) delete result.__image;
+        return reply(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }, ...(image ? [{ type: "image", data: image.data, mimeType: image.mimeType }] : [])] });
       } catch (e) {
         return reply(id, { content: [{ type: "text", text: e.message }], isError: true });
       }

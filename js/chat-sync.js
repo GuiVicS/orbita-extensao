@@ -574,6 +574,35 @@
     return out;
   }
 
+  // Mensagens de uma conversa no período, direto do WhatsApp (até 4 páginas), com
+  // as transcrições que já existem aqui (e, se pedido, transcreve os áudios que faltam).
+  // Usado pelo Resumo da Órbita (com a IA dela) e pelo agente local (sem IA).
+  async function periodMessages(req) {
+    const since = Number(req.since) || 0;
+    const chatId = String(req.chatId || "");
+    let msgs = await exec({ op: C.TAB_CMDS.GET_MESSAGES, chatId, count: 100 }, 60000);
+    for (let page = 0; page < 3 && msgs.length && msgs[0].ts > since; page++) {
+      const older = await exec({ op: C.TAB_CMDS.GET_MESSAGES, chatId, count: 100, beforeId: msgs[0].id }, 60000);
+      if (!older.length) break;
+      msgs = [...older, ...msgs];
+    }
+    const known = await Promise.all(msgs.map((m) => C.getMessage(m.id).catch(() => null)));
+    msgs = msgs.map((m, i) => (known[i] ? C.mergeMessage(known[i], m) : m));
+    // áudios do período sem transcrição: transcreve antes de resumir (opcional,
+    // até maxAudioSec cada). Usa o mesmo transcritor das Conversas e guarda o resultado.
+    if (req.transcribe) {
+      const maxSec = Math.max(10, Number(req.maxAudioSec) || 300);
+      const need = msgs.filter((m) => m.ts > since && m.type === "audio" && !m.revoked && !m.audio?.transcript && m.audio?.transcriptStatus !== "empty" && (m.audio?.duration || 0) <= maxSec);
+      if (need.length) {
+        await C.upsertMessages(need);
+        for (const m of need) await transcribeMessage({ id: m.id, manual: true }).catch(() => {});
+        const fresh = new Map((await Promise.all(need.map((m) => C.getMessage(m.id).catch(() => null)))).filter(Boolean).map((m) => [m.id, m]));
+        msgs = msgs.map((m) => (fresh.has(m.id) ? C.mergeMessage(m, fresh.get(m.id)) : m));
+      }
+    }
+    return msgs;
+  }
+
   // IA do resumo: a mesma das Opções ou o Nemotron (Opções → Nemotron: OpenRouter grátis ou OpenCode Zen).
   async function summaryAi() {
     const cfg = (await chrome.storage.local.get("orbita:summary:ai"))["orbita:summary:ai"] || {};
@@ -621,7 +650,7 @@
   // ------------------------------------------------------ pedidos do painel
   async function handle(req) {
     // ler grupos (importar contatos no painel) funciona mesmo com as Conversas desligadas
-    const readOnly = [C.OPS.STATUS, C.OPS.GROUP_LIST, C.OPS.GROUP_INFO, C.OPS.GROUP_RESOLVE, C.OPS.SUMMARY_CHATS, C.OPS.SUMMARY_CHAT, C.OPS.SUMMARY_OVERVIEW].includes(req.op);
+    const readOnly = [C.OPS.STATUS, C.OPS.GROUP_LIST, C.OPS.GROUP_INFO, C.OPS.GROUP_RESOLVE, C.OPS.SUMMARY_CHATS, C.OPS.SUMMARY_CHAT, C.OPS.SUMMARY_OVERVIEW, C.OPS.SUMMARY_RAW].includes(req.op);
     if (!readOnly && !(await C.moduleEnabled())) throw new Error("As Conversas estão desligadas em Opções → Módulos.");
     switch (req.op) {
       case C.OPS.STATUS:
@@ -711,35 +740,26 @@
       }
 
       case C.OPS.SUMMARY_CHAT: {
-        // mensagens do período direto do WhatsApp (até 4 páginas), com as transcrições
-        // que já existem aqui; depois a IA e a conferência das fontes
         const since = Number(req.since) || 0;
         const chatId = String(req.chatId || "");
-        let msgs = await exec({ op: C.TAB_CMDS.GET_MESSAGES, chatId, count: 100 }, 60000);
-        for (let page = 0; page < 3 && msgs.length && msgs[0].ts > since; page++) {
-          const older = await exec({ op: C.TAB_CMDS.GET_MESSAGES, chatId, count: 100, beforeId: msgs[0].id }, 60000);
-          if (!older.length) break;
-          msgs = [...older, ...msgs];
-        }
-        const known = await Promise.all(msgs.map((m) => C.getMessage(m.id).catch(() => null)));
-        msgs = msgs.map((m, i) => (known[i] ? C.mergeMessage(known[i], m) : m));
-        // áudios do período sem transcrição: transcreve antes de resumir (opcional,
-        // até maxAudioSec cada). Usa o mesmo transcritor das Conversas e guarda o resultado.
-        if (req.transcribe) {
-          const maxSec = Math.max(10, Number(req.maxAudioSec) || 300);
-          const need = msgs.filter((m) => m.ts > since && m.type === "audio" && !m.revoked && !m.audio?.transcript && m.audio?.transcriptStatus !== "empty" && (m.audio?.duration || 0) <= maxSec);
-          if (need.length) {
-            await C.upsertMessages(need);
-            for (const m of need) await transcribeMessage({ id: m.id, manual: true }).catch(() => {});
-            const fresh = new Map((await Promise.all(need.map((m) => C.getMessage(m.id).catch(() => null)))).filter(Boolean).map((m) => [m.id, m]));
-            msgs = msgs.map((m) => (fresh.has(m.id) ? C.mergeMessage(m, fresh.get(m.id)) : m));
-          }
-        }
+        const msgs = await periodMessages(req);
         return globalThis.OrbitaSummary.summarizeChat({ chatId, name: String(req.name || ""), isGroup: Boolean(req.isGroup) }, msgs, { since, me: account, now: Date.now(), complete: await summaryAi() });
+      }
+
+      case C.OPS.SUMMARY_RAW: {
+        // o mesmo material do resumo, sem a IA da Órbita: o agente local resume
+        const since = Number(req.since) || 0;
+        const chat = { chatId: String(req.chatId || ""), name: String(req.name || ""), isGroup: Boolean(req.isGroup) };
+        const prep = globalThis.OrbitaSummary.prepare(chat, await periodMessages(req), { since, me: account });
+        return {
+          messages: [...prep.index.values()].map((m) => ({ id: m.id, ts: m.ts, who: m._who, text: m._text, fromMe: Boolean(m.fromMe), context: Boolean(m.context), mentionsMe: m.mentionsMe, repliesMe: m.repliesMe })),
+          count: prep.count, skippedAudio: prep.skippedAudio, skippedMedia: prep.skippedMedia, lastMine: prep.lastMine,
+        };
       }
 
       case C.OPS.SUMMARY_OVERVIEW:
         return String(await (await summaryAi())(globalThis.OrbitaSummary.overviewPrompt(req.merged || {}))).trim().slice(0, 800);
+
 
       case C.OPS.GROUP_RESOLVE: {
         const id = String(req.id || "");

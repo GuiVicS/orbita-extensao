@@ -447,6 +447,126 @@
       return { at: iso(s.at), since: iso(s.since), overview: s.overview || null, needsReply: (m.pending || []).map(item), dated: (m.dated || []).map(item), notices: (m.notices || []).map(item), links: (m.links || []).map(item), perChat: (m.chats || []).map((c) => ({ chat: c.chatName, chatId: c.chatId, summary: c.summary })), available: hist.length };
     },
 
+    async summary_source(a) {
+      if (!waStatus().ready) fail("Abra o WhatsApp Web numa aba do Chrome para montar o resumo.");
+      const store = await chrome.storage.local.get(["orbita:summary:last", "orbita:summary:excluded"]);
+      const period = ["last", "24h", "3d", "7d"].includes(a.period) ? a.period : "last";
+      const since = parseWhen(a.since, "since") ?? (period === "last" ? store["orbita:summary:last"] || Date.now() - 864e5 : Date.now() - { "24h": 1, "3d": 3, "7d": 7 }[period] * 864e5);
+      const offset = clamp(a.offset, 0, 1e6, 0);
+      const limit = clamp(a.limit, 1, 40, 15);
+      const includeGroups = a.includeGroups !== false;
+      let ses = (await chrome.storage.local.get(SUMMARY_KEY))[SUMMARY_KEY];
+      // nova sessão na primeira página (ou se o período mudou)
+      const periodKey = a.since ? `since:${since}` : period;
+      if (!ses || offset === 0 || ses.periodKey !== periodKey || ses.includeGroups !== includeGroups) {
+        const excluded = store["orbita:summary:excluded"] || [];
+        const chats = (await ops().handle({ op: C.OPS.SUMMARY_CHATS, since, excluded })).filter((c) => includeGroups || !c.isGroup);
+        ses = { since, until: Date.now(), period: a.since ? "custom" : period, periodKey, includeGroups, excludedCount: excluded.length, chats, info: {}, msgs: {} };
+      }
+      const page = ses.chats.slice(offset, offset + limit);
+      const out = [];
+      for (const c of page) {
+        const r = await ops().handle({ op: C.OPS.SUMMARY_RAW, since: ses.since, chatId: c.chatId, name: c.name, isGroup: c.isGroup, transcribe: Boolean(a.transcribe), maxAudioSec: 300 });
+        ses.info[c.chatId] = { name: c.name, isGroup: c.isGroup, count: r.count, skippedAudio: r.skippedAudio, skippedMedia: r.skippedMedia, lastMine: r.lastMine };
+        for (const m of r.messages) ses.msgs[m.id] = { chatId: c.chatId, ts: m.ts, who: m.who, text: String(m.text).slice(0, 600), fromMe: m.fromMe, context: m.context };
+        if (!r.count) continue; // só contexto ou só “ok/obrigado”: nada a resumir
+        out.push({
+          chatId: c.chatId, name: c.name, isGroup: c.isGroup, unread: c.unreadCount || 0, newMessages: r.count,
+          iRepliedLastAt: iso(r.lastMine) || null, audiosWithoutText: r.skippedAudio, mediaWithoutText: r.skippedMedia,
+          messages: r.messages.map((m) => ({ id: m.id, at: iso(m.ts), who: m.who, text: m.text, ...(m.context || m.mentionsMe || m.repliesMe ? { flags: [m.context ? "contexto" : "", m.mentionsMe ? "te marcou" : "", m.repliesMe ? "respondendo você" : ""].filter(Boolean) } : {}) })),
+        });
+      }
+      await chrome.storage.local.set({ [SUMMARY_KEY]: ses });
+      const next = offset + limit < ses.chats.length ? offset + limit : null;
+      return {
+        since: iso(ses.since), until: iso(ses.until), period: ses.period, excludedGroups: ses.excludedCount,
+        totalChats: ses.chats.length, offset, nextOffset: next, chats: out,
+        next: next === null ? "Fim do material. Escreva o resumo e grave com save_summary (cada item com os ids das mensagens em sources)." : `Chame summary_source de novo com offset ${next}.`,
+      };
+    },
+
+    async save_summary(a) {
+      const ses = (await chrome.storage.local.get(SUMMARY_KEY))[SUMMARY_KEY];
+      if (!ses) fail("Chame summary_source antes: o resumo precisa das mensagens de origem.");
+      const dropped = [];
+      const clean = (s, n) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, n);
+      function build(it, type, extra = {}) {
+        const text = clean(it?.text, 300);
+        const src = [...new Set((Array.isArray(it?.sources) ? it.sources : []).map(String))].map((id) => [id, ses.msgs[id]]).filter(([, m]) => m && !m.context);
+        if (!text || !src.length) {
+          dropped.push(text || "(item sem texto)");
+          return null;
+        }
+        const chatId = src[0][1].chatId;
+        const info = ses.info[chatId] || {};
+        const last = Math.max(...src.map(([, m]) => m.ts));
+        return {
+          type, text, who: clean(it.who, 80) || src.map(([, m]) => m).find((m) => !m.fromMe)?.who || "",
+          date: null, time: null, dateText: null, needsReply: false, answered: (info.lastMine || 0) > last,
+          chatId, chatName: info.name || "", isGroup: Boolean(info.isGroup), ts: last,
+          sources: src.map(([id, m]) => ({ id, ts: m.ts, who: m.who, text: m.text.slice(0, 220) })),
+          ...extra,
+        };
+      }
+      const list = (arr, fn) => (Array.isArray(arr) ? arr : []).map(fn).filter(Boolean);
+      const pendingAll = list(a.needsReply, (it) => build(it, "question"));
+      const pending = pendingAll.filter((i) => !i.answered).map((i) => ({ ...i, needsReply: true })).sort((x, y) => x.ts - y.ts);
+      const other = [...pendingAll.filter((i) => i.answered), ...list(a.other, (it) => build(it, "request"))].sort((x, y) => y.ts - x.ts);
+      const dated = list(a.dated, (it) => {
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(it?.date || "") ? it.date : null;
+        return build(it, "commitment", { date, time: date && /^\d{2}:\d{2}$/.test(it?.time || "") ? it.time : null, dateText: clean(it?.dateText, 120) || null });
+      }).sort((x, y) => (x.date || "9999").localeCompare(y.date || "9999") || (x.time || "99").localeCompare(y.time || "99"));
+      const notices = list(a.notices, (it) => build(it, "notice")).sort((x, y) => y.ts - x.ts);
+      const links = list(a.links, (it) => build(it, "link"));
+      const all = [...pending, ...dated, ...notices, ...links, ...other];
+      const chats = list(a.perChat, (c) => {
+        const info = ses.info[String(c?.chatId)];
+        if (!info) return dropped.push(`resumo de ${c?.chatId}`), null;
+        return { chatId: String(c.chatId), chatName: info.name, isGroup: Boolean(info.isGroup), summary: clean(c.summary, 400), priority: clamp(c.priority, 0, 3, 0), items: all.filter((i) => i.chatId === c.chatId), count: info.count, skippedAudio: info.skippedAudio, skippedMedia: info.skippedMedia };
+      }).sort((x, y) => y.priority - x.priority || y.items.length - x.items.length);
+      const infos = Object.values(ses.info);
+      const merged = {
+        pending, dated, notices, links, other, chats,
+        totals: { chats: infos.length, messages: infos.reduce((n, i) => n + (i.count || 0), 0), skippedAudio: infos.reduce((n, i) => n + (i.skippedAudio || 0), 0), skippedMedia: infos.reduce((n, i) => n + (i.skippedMedia || 0), 0) },
+      };
+      const partial = Boolean(a.partial) || infos.length < ses.chats.length;
+      const summary = { id: String(ses.until), at: ses.until, since: ses.since, period: ses.period === "custom" ? "last" : ses.period, overview: clean(a.overview, 800), merged, failed: [], partial, by: ctxClient?.name || "Agente local" };
+      const hist = (await chrome.storage.local.get("orbita:summary:history"))["orbita:summary:history"] || [];
+      await chrome.storage.local.set({ "orbita:summary:history": [summary, ...hist.filter((h) => h.id !== summary.id)].slice(0, 10), ...(partial ? {} : { "orbita:summary:last": ses.until }) });
+      await chrome.storage.local.remove(SUMMARY_KEY);
+      return {
+        ok: true, saved: { needsReply: pending.length, dated: dated.length, notices: notices.length, links: links.length, other: other.length, perChat: chats.length },
+        movedToOther: pendingAll.length - pending.length, dropped,
+        partial, note: partial ? (infos.length < ses.chats.length ? `Parcial: só ${infos.length} de ${ses.chats.length} conversas foram lidas (continue o summary_source até o fim na próxima vez).` : "Parcial: o “desde o último resumo” não avançou.") : "Gravado. Aparece no painel da Órbita (Resumo do WhatsApp) e no app do celular.",
+      };
+    },
+
+    async download_media(a) {
+      const id = String(a.messageId || "").trim();
+      const m = id && (await C.getMessage(id));
+      if (!m) fail("Mensagem não encontrada. Pegue o id em get_messages (a conversa precisa ter sido lida antes).");
+      if (m.revoked) fail("Essa mensagem foi apagada.");
+      if (!["image", "video", "audio", "sticker", "document", "other"].includes(m.type) && !m.media) fail(`Essa mensagem não tem mídia (tipo: ${m.type || "texto"}).`);
+      let media;
+      try {
+        await ops().handle({ op: C.OPS.MEDIA_FETCH, messageId: id }); // baixa do WhatsApp se ainda não estiver no cache
+        media = await C.getMedia(id);
+      } catch (e) {
+        fail(`Não consegui baixar a mídia: ${e.message}${waStatus().ready ? "" : " (abra o WhatsApp Web numa aba do Chrome)"}`);
+      }
+      if (!media?.blob) fail("A mídia não está disponível (o WhatsApp pode ter apagado o arquivo antigo do servidor).");
+      if (media.blob.size > 100 * 1024 * 1024) fail("Mídia grande demais para passar pelo agente (máx. 100 MB).");
+      const bytes = new Uint8Array(await media.blob.arrayBuffer());
+      let bin = "";
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      const chat = await C.getChat(m.chatId);
+      return {
+        messageId: id, chatId: m.chatId, chat: chatName(chat), at: iso(m.ts), from: m.fromMe ? "Você" : m.authorName || chatName(chat),
+        type: m.type === "other" ? m.label?.toLowerCase?.() || "documento" : m.type, mimeType: media.blob.type || media.mime || "application/octet-stream",
+        originalName: m.filename || null, caption: m.caption || (m.type !== "text" ? m.text : "") || null, size: media.blob.size, fileBase64: btoa(bin),
+      };
+    },
+
     async list_groups() {
       if (!waStatus().ready) fail("Abra o WhatsApp Web numa aba do Chrome para listar os grupos.");
       const groups = await ops().handle({ op: C.OPS.GROUP_LIST });
@@ -847,9 +967,13 @@
     return globalThis.OrbitaCrm.addToCrm(phone, "");
   }
 
+  const SUMMARY_KEY = "orbita:mcp:summarySource"; // material do resumo entre summary_source e save_summary
+  let ctxClient = null;
+
   async function run(name, args, ctx) {
     const fn = H[name];
     if (!fn) fail(`Ferramenta desconhecida: ${name}`);
+    ctxClient = ctx?.client || null;
     return fn(args && typeof args === "object" ? args : {}, ctx);
   }
 

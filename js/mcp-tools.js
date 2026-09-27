@@ -87,6 +87,34 @@
     { name: "get_campaign", level: "read", title: "Detalhes da campanha", description: "Uma campanha: mensagens, ritmo, lista, números e os destinatários com falha.", inputSchema: obj({ campaignId: str("Id da campanha") }, ["campaignId"]) },
     { name: "list_quick_replies", level: "read", title: "Respostas rápidas", description: "Respostas rápidas cadastradas (atalho, título, categoria e passos).", inputSchema: obj({ query: str("Busca por atalho ou título") }) },
     { name: "get_last_summary", level: "read", title: "Último Resumo do WhatsApp", description: "O último resumo gerado (o que precisa de resposta, compromissos, avisos) e os anteriores, se pedir.", inputSchema: obj({ index: int("0 = o último, 1 = o anterior…", { minimum: 0, maximum: 9 }) }) },
+    {
+      name: "summary_source", level: "read", title: "Material do Resumo do WhatsApp",
+      description: "Primeiro passo do Resumo do WhatsApp feito por você: traz as conversas e grupos com mensagens no período (padrão: desde o último resumo), sem os grupos excluídos do Resumo, com as mensagens numeradas por id, quem falou, transcrição dos áudios e marcas (te marcou, respondendo você, contexto de antes do período). Vem em páginas: chame de novo com offset = nextOffset até nextOffset ser null. Depois grave com save_summary.",
+      inputSchema: obj({
+        period: str("Período", { enum: ["last", "24h", "3d", "7d"], default: "last" }), since: WHEN("Ou a data de início exata."),
+        offset: int("Paginação: comece em 0 e use o nextOffset devolvido", { minimum: 0 }), limit: int("Conversas por página (padrão 15, até 40)", { minimum: 1, maximum: 40 }),
+        includeGroups: bool("Incluir grupos (padrão sim)"), transcribe: bool("Transcrever antes os áudios do período que ainda não têm texto (gasta créditos do Whisper; padrão não)"),
+      }),
+    },
+    {
+      name: "save_summary", level: "organize", title: "Gravar o Resumo do WhatsApp",
+      description: "Grava o resumo que você escreveu (a partir de summary_source) no Resumo do WhatsApp da Órbita: aparece no painel, na página do Resumo e no app do celular, e o próximo “desde o último resumo” começa daqui. Cada item precisa citar os ids das mensagens de origem; itens sem fonte válida são descartados.",
+      inputSchema: obj({
+        overview: str("Abertura: 2–3 frases com o que a pessoa precisa saber e fazer primeiro"),
+        needsReply: { type: "array", items: obj({ text: str("O item, em uma frase"), sources: { type: "array", minItems: 1, items: { type: "string" }, description: "Ids das mensagens de onde saiu (de summary_source) — obrigatório" }, who: str("Quem (opcional)") }, ["text", "sources"]), description: "Perguntas/pedidos esperando resposta DO USUÁRIO (do mais antigo ao mais novo)" },
+        dated: { type: "array", items: obj({ text: str("Compromisso ou prazo"), date: str("AAAA-MM-DD"), time: str("HH:MM (opcional)"), dateText: str("Como foi dito (ex.: amanhã às 15h)"), sources: { type: "array", minItems: 1, items: { type: "string" } }, who: str("Quem") }, ["text", "sources"]), description: "Compromissos, reuniões e prazos" },
+        notices: { type: "array", items: obj({ text: str("O item, em uma frase"), sources: { type: "array", minItems: 1, items: { type: "string" }, description: "Ids das mensagens de onde saiu (de summary_source) — obrigatório" }, who: str("Quem (opcional)") }, ["text", "sources"]), description: "Avisos e decisões (principalmente de grupos)" },
+        links: { type: "array", items: obj({ text: str("O item, em uma frase"), sources: { type: "array", minItems: 1, items: { type: "string" }, description: "Ids das mensagens de onde saiu (de summary_source) — obrigatório" }, who: str("Quem (opcional)") }, ["text", "sources"]), description: "Links e documentos importantes compartilhados" },
+        other: { type: "array", items: obj({ text: str("O item, em uma frase"), sources: { type: "array", minItems: 1, items: { type: "string" }, description: "Ids das mensagens de onde saiu (de summary_source) — obrigatório" }, who: str("Quem (opcional)") }, ["text", "sources"]), description: "Outras perguntas/pedidos relevantes que não são para o usuário responder" },
+        perChat: { type: "array", items: obj({ chatId: CHAT, summary: str("1–2 frases sobre a conversa no período"), priority: int("0 a 3 (3 = urgente)", { minimum: 0, maximum: 3 }) }, ["chatId", "summary"]), description: "Resumo curto por conversa" },
+        partial: bool("Resumo parcial (não avança o “desde o último resumo”)"),
+      }, ["overview"]),
+    },
+    {
+      name: "download_media", level: "read", title: "Baixar mídia de uma mensagem",
+      description: "Baixa a foto, vídeo, áudio, figurinha ou documento (PDF etc.) de uma mensagem e salva num arquivo no computador (padrão: pasta Downloads\\Orbita). Devolve o caminho do arquivo. Pegue o messageId em get_messages ou search_messages (mensagens [foto], [vídeo], [documento], [áudio]…). Com view: true, uma imagem também volta para você ver o conteúdo.",
+      inputSchema: obj({ messageId: str("Id da mensagem com a mídia"), folder: str("Pasta onde salvar (caminho completo; padrão Downloads\\Orbita)"), fileName: str("Nome do arquivo (opcional; padrão o nome original ou tipo + data)"), view: bool("Imagem: devolver também a imagem para você analisar (até 4 MB)") }, ["messageId"]),
+    },
     { name: "list_groups", level: "read", title: "Grupos do WhatsApp", description: "Todos os grupos da conta conectada (precisa do WhatsApp Web aberto).", inputSchema: obj({}) },
     { name: "get_group_members", level: "read", title: "Participantes do grupo", description: "Participantes de um grupo: nome, número e se é admin (precisa do WhatsApp Web aberto).", inputSchema: obj({ groupId: str("Id do grupo (…@g.us)") }, ["groupId"]) },
     { name: "transcribe_audio", level: "read", title: "Transcrever áudio", description: "Transcreve um áudio recebido (usa o Whisper configurado; gasta créditos do provedor). Devolve o texto.", inputSchema: obj({ messageId: str("Id da mensagem de áudio (de get_messages)") }, ["messageId"]) },
@@ -221,6 +249,22 @@ No fim, uma tabela do que foi cadastrado. Não envie mensagens.`,
 Mostre: números principais, gargalos do funil (onde os leads param), tempo de resposta e horários de pico, resultado das campanhas, e 5 recomendações práticas para a próxima semana.`,
     },
   );
+
+  PROMPTS.push({
+    name: "resumo_whatsapp", title: "Resumo do WhatsApp", description: "Lê as conversas e grupos desde o último resumo e grava na Órbita o que precisa da sua resposta, compromissos, avisos e um resumo por conversa.",
+    arguments: [{ name: "periodo", description: "last (desde o último resumo, padrão), 24h, 3d ou 7d", required: false }, { name: "transcrever", description: "sim/não: transcrever áudios sem texto antes (padrão não)", required: false }],
+    text: (a) => `Faça o meu Resumo do WhatsApp na Órbita.
+1. Chame summary_source (period "${a.periodo || "last"}"${/^s/i.test(a.transcrever || "") ? ", transcribe true" : ""}) e continue com offset = nextOffset até vir null.
+2. Leia tudo com atenção. As mensagens marcadas "contexto" são de antes do período: use só para entender, não como fonte. "te marcou" e "respondendo você" indicam o que é para mim.
+3. Monte:
+   - needsReply: perguntas e pedidos esperando MINHA resposta (se eu já respondi depois, não entra), do mais antigo ao mais novo;
+   - dated: compromissos, reuniões e prazos com data (AAAA-MM-DD) e hora quando houver — calcule “amanhã”, “sexta” etc. a partir da data da mensagem;
+   - notices: avisos e decisões dos grupos; links: links e documentos importantes; other: pedidos relevantes que não são para mim;
+   - perChat: 1–2 frases por conversa que teve algo relevante, com prioridade 0–3;
+   - overview: 2–3 frases diretas com o que eu preciso saber e fazer primeiro.
+   Cada item cita os ids das mensagens de origem (sources). Não invente nada que não esteja nas mensagens.
+4. Grave com save_summary e me mostre o resumo aqui também, começando pelo que precisa de resposta.`,
+  });
 
   const LEVELS = {
     read: "Ler conversas, CRM, agenda, listas e campanhas",

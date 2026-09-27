@@ -224,7 +224,7 @@
     const t = m.totals;
     const left = [t.skippedAudio && `${nf.format(t.skippedAudio)} áudio${t.skippedAudio > 1 ? "s" : ""} sem transcrição`, t.skippedMedia && `${nf.format(t.skippedMedia)} foto${t.skippedMedia > 1 ? "s" : ""}/mídia${t.skippedMedia > 1 ? "s" : ""} sem legenda`, s.failed?.length && `${s.failed.length} conversa${s.failed.length > 1 ? "s" : ""} com erro (${s.failed.map((f) => f.name).join(", ")})`].filter(Boolean);
     return `<div class="card sec head">
-        <div class="row"><div style="flex:1"><h2 style="font-size:17px">Resumo de ${esc(when(s.at))}</h2><small class="muted">${esc(PERIODS[s.period] || "")} · desde ${esc(when(s.since))} · ${nf.format(t.chats)} conversas · ${nf.format(t.messages)} mensagens${s.partial ? " · <b>interrompido</b>" : ""}</small></div>
+        <div class="row"><div style="flex:1"><h2 style="font-size:17px">Resumo de ${esc(when(s.at))}</h2><small class="muted">${esc(PERIODS[s.period] || "")} · desde ${esc(when(s.since))} · ${nf.format(t.chats)} conversas · ${nf.format(t.messages)} mensagens${s.partial ? " · <b>interrompido</b>" : ""}${s.by ? ` · feito por <b>${esc(s.by)}</b>` : ""}</small></div>
           <label class="row small" style="gap:6px"><input type="checkbox" data-a="showres" ${S.showResolved ? "checked" : ""}> Mostrar resolvidos</label>
           <button class="btn sm danger" data-a="del" ${S.running ? "disabled" : ""}>Apagar este resumo</button>${S.history.length > 1 ? `<button class="btn sm danger" data-a="delall" ${S.running ? "disabled" : ""}>Apagar todos</button>` : ""}</div>
         ${s.overview ? `<p class="overview">${esc(s.overview)}</p>` : !m.pending.length && !m.dated.length && !m.notices.length ? `<p class="overview">Nada que precise de você neste período. 😌</p>` : ""}

@@ -139,7 +139,7 @@ console.log("ferramentas liberadas:", tools.length);
 assert.equal(tools.includes("send_message"), false, "sem permissão de envio, não aparece");
 assert.ok(tools.includes("bulk_update_leads") && tools.includes("get_messages"));
 const prompts = (await ag.request("prompts/list")).result.prompts.map((p) => p.name);
-assert.deepEqual(prompts.sort(), ["analisar_conversas", "follow_up", "organizar_leads", "preparar_campanha", "qualificar_novos_contatos", "relatorio_semanal", "resumo_do_dia"]);
+assert.deepEqual(prompts.sort(), ["analisar_conversas", "follow_up", "organizar_leads", "preparar_campanha", "qualificar_novos_contatos", "relatorio_semanal", "resumo_do_dia", "resumo_whatsapp"]);
 
 // ---- leitura
 const st = await ag.tool("orbita_status");
@@ -216,6 +216,41 @@ assert.equal(rep.totalDealValue, 2500);
 const inDb = await dash.evaluate(() => new Promise((res) => { const r = indexedDB.open("orbita"); r.onsuccess = () => { const q = r.result.transaction("crmClients").objectStore("crmClients").get("5511999998888"); q.onsuccess = () => res(q.result); }; }));
 assert.equal(inDb.stageId, "s3");
 assert.deepEqual(inDb.tags, ["Importado", "quente"]);
+
+// ---- Resumo do WhatsApp feito pelo agente
+const src = await ag.tool("summary_source", { period: "7d", limit: 1 });
+console.log("material:", JSON.stringify(src).slice(0, 300));
+assert.ok(src.totalChats >= 1 && src.chats.length <= 1);
+let pages = [src];
+while (pages.at(-1).nextOffset !== null) pages.push(await ag.tool("summary_source", { period: "7d", limit: 1, offset: pages.at(-1).nextOffset }));
+const johnChat = pages.flatMap((p) => p.chats).find((c) => c.chatId === "5511999998888@c.us");
+assert.ok(johnChat, "a conversa do John vem no material");
+const priceMsg = johnChat.messages.find((m) => /price/i.test(m.text));
+assert.ok(priceMsg?.id && priceMsg.who === "John Smith");
+const saved = await ag.tool("save_summary", {
+  overview: "John pediu o preço e espera sua resposta.",
+  needsReply: [{ text: "John perguntou o preço do plano", sources: [priceMsg.id] }, { text: "Item inventado", sources: ["id-que-nao-existe"] }],
+  dated: [{ text: "Ligar para o John", date: "2026-10-01", time: "10:00", dateText: "quarta às 10h", sources: [priceMsg.id] }],
+  perChat: [{ chatId: "5511999998888@c.us", summary: "Cliente interessado, pediu preço.", priority: 3 }],
+});
+console.log("resumo gravado:", saved);
+assert.equal(saved.ok, true, JSON.stringify(saved));
+assert.deepEqual(saved.dropped, ["Item inventado"], "fonte inventada é descartada");
+assert.equal(saved.saved.needsReply + saved.movedToOther, 1);
+assert.equal(saved.saved.dated, 1);
+const hist = await opt.evaluate(async () => (await chrome.storage.local.get(["orbita:summary:history", "orbita:summary:last", "orbita:mcp:summarySource"])));
+assert.equal(hist["orbita:summary:history"][0].by, "Agente de Teste");
+assert.equal(hist["orbita:summary:history"][0].overview, "John pediu o preço e espera sua resposta.");
+assert.equal(hist["orbita:summary:history"][0].merged.chats[0].priority, 3);
+assert.ok(hist["orbita:summary:last"] > Date.now() - 120000, "o “desde o último resumo” avançou");
+assert.equal(hist["orbita:mcp:summarySource"], undefined, "material temporário apagado");
+assert.match((await ag.tool("save_summary", { overview: "x" })).error, /summary_source antes/);
+const rp = await ctx.newPage();
+await rp.goto(`chrome-extension://${id}/resumo.html`);
+await rp.waitForFunction(() => /feito por Agente de Teste/.test(document.body.textContent), null, { timeout: 15000 });
+assert.match(await rp.textContent("body"), /John pediu o preço e espera sua resposta[\s\S]*Ligar para o John/);
+await rp.screenshot({ path: shots + "/mcp-resumo.png", fullPage: true });
+await rp.close();
 
 // ---- permissões: ação desligada uma a uma
 await opt.click("#mcpSec details:has(#mcpTools) summary"); // a lista de ações começa recolhida
@@ -323,6 +358,33 @@ assert.match((await ag.tool("send_file", { chatId: "5511999998888@c.us", filePat
 const logged = await opt.evaluate(async () => (await chrome.storage.local.get("orbita:mcp:log"))["orbita:mcp:log"].find((l) => l.tool === "send_file"));
 assert.ok(logged.args.length < 400 && /KB\]/.test(logged.args), "o registro não guarda o arquivo inteiro");
 fs.rmSync(tmp, { recursive: true, force: true });
+
+// ---- baixar mídias de mensagens (download_media)
+const dl = fs.mkdtempSync(here + ".mcp-dl-");
+const J = "5511999998888@c.us";
+const rawImg = await ag.request("tools/call", { name: "download_media", arguments: { messageId: `false_${J}_img1`, folder: dl, view: true } });
+const img = JSON.parse(rawImg.result.content[0].text);
+console.log("foto baixada:", img);
+assert.equal(img.ok, true, rawImg.result.content[0].text);
+assert.equal(img.mimeType, "image/png");
+assert.equal(img.caption, "Foto do carro");
+assert.ok(fs.existsSync(img.filePath) && fs.statSync(img.filePath).size === img.sizeBytes);
+assert.equal(fs.readFileSync(img.filePath).subarray(1, 4).toString(), "PNG");
+assert.deepEqual([rawImg.result.content[1].type, rawImg.result.content[1].mimeType], ["image", "image/png"], "a imagem volta para o agente ver");
+const pdfDl = await ag.tool("download_media", { messageId: `false_${J}_pdf1`, folder: dl });
+assert.equal(pdfDl.fileName, "Proposta TopBrasil.pdf");
+assert.equal(fs.readFileSync(pdfDl.filePath).subarray(0, 5).toString(), "%PDF-");
+const pdfAgain = await ag.tool("download_media", { messageId: `false_${J}_pdf1`, folder: dl });
+assert.equal(pdfAgain.fileName, "Proposta TopBrasil (2).pdf", "não sobrescreve");
+const zip = await ag.tool("download_media", { messageId: `false_${J}_big1`, folder: dl, view: true });
+assert.equal(zip.sizeBytes, 9 * 1024 * 1024);
+assert.match(zip.viewNote, /Só imagens/);
+const named = await ag.tool("download_media", { messageId: `false_${J}_doc1`, folder: dl, fileName: "contrato-cliente" });
+assert.equal(named.fileName, "contrato-cliente.docx");
+assert.match((await ag.tool("download_media", { messageId: "nao-existe" })).error, /Mensagem não encontrada/);
+assert.match((await ag.tool("download_media", { messageId: `false_${J}_1` })).error, /não tem mídia/);
+assert.match((await ag.tool("download_media", { messageId: `false_${J}_pdf1`, folder: "relativa" })).error, /caminho completo da pasta/);
+fs.rmSync(dl, { recursive: true, force: true });
 
 // ---- registro de atividade
 await opt.click("#mcpSec details:has(#mcpLog) summary");

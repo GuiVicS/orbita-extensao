@@ -120,7 +120,7 @@
       if (!LEVEL[name]) throw new Error(`Ferramenta desconhecida: ${name}`);
       if (!cfg.perms[LEVEL[name]]) throw new Error(`Permissão desligada: “${globalThis.OrbitaMcpTools.LEVELS[LEVEL[name]]}”. Ligue em Opções → Agente local (MCP).`);
       if (!isAllowed(name)) throw new Error(`A ação “${TOOLS.find((t) => t.name === name).title}” está desligada em Opções → Agente local (MCP).`);
-      const result = await globalThis.OrbitaMcpHandlers.run(name, args, { confirm: (info) => confirmSend(info, client || clientInfo) });
+      const result = await globalThis.OrbitaMcpHandlers.run(name, args, { client: client || clientInfo, confirm: (info) => confirmSend(info, client || clientInfo) });
       reply = { type: "result", id, ok: true, result };
     } catch (e) {
       reply = { type: "result", id, ok: false, error: e?.message || String(e) };

@@ -65,7 +65,7 @@ test("protocolo MCP: initialize, tools, prompts e erro amigável sem a extensão
   s.send({ jsonrpc: "2.0", method: "notifications/initialized" });
   s.send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
   const tools = (await s.wait(2)).result.tools;
-  assert.equal(tools.length, 38);
+  assert.equal(tools.length, 41);
   const send = tools.find((t) => t.name === "send_message");
   assert.equal(send.annotations.destructiveHint, true);
   assert.equal(tools.find((t) => t.name === "list_leads").annotations.readOnlyHint, true);
@@ -230,6 +230,30 @@ test("send_file: o servidor principal lê o arquivo (também quando o pedido vem
   assert.deepEqual(r, { keys: ["caption", "chatId", "fileBase64", "fileName", "kind", "mimeType", "note", "size"], name: "nota.pdf", mime: "application/pdf", kind: "document", text: "%PDF-1.4 teste" });
   hub.send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "send_file", arguments: { chatId: "1@c.us", filePath: `${dir}/sumiu.pdf` } } });
   assert.match((await hub.wait(2)).result.content[0].text, /Arquivo não encontrado/);
+  hub.p.kill();
+  relay.p.kill();
+  fsm.rmSync(dir, { recursive: true, force: true });
+});
+
+test("download_media: o servidor grava o arquivo (também pedido por outro agente) e devolve a imagem com view", async () => {
+  const fsm = await import("node:fs");
+  const os = await import("node:os");
+  const port = PORT + 110;
+  const env = { ORBITA_MCP_TOKEN: "tk", ORBITA_MCP_PORT: String(port) };
+  const dir = fsm.mkdtempSync(`${os.tmpdir()}/orbita-dl-`);
+  const png = Buffer.from("89504e470d0a1a0a0000", "hex");
+  const hub = spawnAt(env);
+  await new Promise((r) => setTimeout(r, 700));
+  await fakeExtension(port, { token: "tk", allowed: ["download_media"], reply: () => ({ messageId: "m1", chatId: "1@c.us", at: "2026-09-27T10:00:00-03:00", type: "foto", mimeType: "image/png", originalName: null, caption: "x", size: png.length, fileBase64: png.toString("base64") }) });
+  const relay = spawnAt(env);
+  await new Promise((r) => setTimeout(r, 900));
+  relay.send({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "download_media", arguments: { messageId: "m1", folder: dir, view: true } } });
+  const res = (await relay.wait(1)).result;
+  const out = JSON.parse(res.content[0].text);
+  assert.equal(out.fileName, "foto-2026-09-27-10-00-00.png");
+  assert.deepEqual(fsm.readFileSync(out.filePath), png);
+  assert.equal(out.fileBase64, undefined, "o conteúdo não volta como texto");
+  assert.deepEqual([res.content[1].type, res.content[1].mimeType, res.content[1].data], ["image", "image/png", png.toString("base64")]);
   hub.p.kill();
   relay.p.kill();
   fsm.rmSync(dir, { recursive: true, force: true });

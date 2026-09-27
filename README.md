@@ -4,6 +4,25 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.25.0
+
+- **Agente local (MCP): Resumo do WhatsApp feito pelo agente.** O agente usa o modelo dele, e o resultado aparece na Órbita do mesmo jeito que o Resumo feito por ela.
+  - **`summary_source`:** entrega o material do período (desde o último resumo, 24 h, 3 dias ou 7 dias), em páginas.
+    - Inclui conversas e grupos, **sem os grupos excluídos** do Resumo.
+    - Traz as mensagens com id, quem falou e as transcrições dos áudios, com as marcas "te marcou", "respondendo você" e "contexto".
+    - Opcionalmente transcreve os áudios que faltam.
+  - **`save_summary`:** grava o resumo do agente na Órbita, com abertura, o que precisa da sua resposta, compromissos com data e hora, avisos, links e resumo por conversa.
+    - **Fontes conferidas:** cada item precisa citar as mensagens de origem; item com fonte inventada é descartado, e o que você já respondeu sai de "precisam de resposta".
+    - **Onde aparece:** no cartão do painel, na página do Resumo (com "feito por <agente>") e no app do celular. O "desde o último resumo" avança.
+  - **Roteiro pronto "Resumo do WhatsApp"** (prompt `resumo_whatsapp`), que faz tudo em sequência.
+- **Agente local: baixar mídias.** Nova ação **`download_media`**:
+  - salva a foto, o vídeo, o áudio, a figurinha ou o documento (PDF, Word, zip…) de uma mensagem num arquivo, por padrão em `Downloads\Orbita`, e devolve o caminho;
+  - mantém o nome original quando existe, sem sobrescrever arquivos;
+  - com `view: true`, a imagem também volta para o agente analisar (até 4 MB);
+  - aceita até 100 MB.
+- **Agente local: enviar arquivos do computador** (`send_file`), descrito na 1.24.0 abaixo, entra nesta mesma atualização.
+- Por dentro: a busca das mensagens do período virou uma função só, usada pelo Resumo da Órbita e pelo do agente.
+
 ## Novidades da 1.24.0
 
 - **Agente local (MCP): enviar arquivos do computador.** Nova ação **`send_file`** (grupo "Enviar mensagens"). O agente informa o **caminho completo** do arquivo (ex.: `C:\Users\voce\Documentos\proposta.pdf`), com legenda opcional, e a Órbita envia pela conversa.

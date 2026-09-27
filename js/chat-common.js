@@ -53,6 +53,7 @@
     SUMMARY_CHATS: "summary.chats", // conversas com mensagens desde uma data
     SUMMARY_CHAT: "summary.chat", // resumo de uma conversa (itens com fontes conferidas)
     SUMMARY_OVERVIEW: "summary.overview", // abertura do resumo, a partir dos itens
+    SUMMARY_RAW: "summary.raw", // mensagens do período já preparadas, sem IA (o agente local resume)
   };
 
   // Módulo ligado/desligado em Opções → Módulos (padrão: ligado).
