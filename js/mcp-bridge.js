@@ -58,9 +58,19 @@
       return setStatus({ state: "off", client: null, error: null });
     }
     if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
+    // Agente fechado = servidor local desligado. Confere antes, em silêncio: uma
+    // tentativa de WebSocket recusada vira erro vermelho em chrome://extensions.
+    const port = Number(cfg.port) || DEFAULTS.port;
+    try {
+      await fetch(`http://127.0.0.1:${port}/`, { mode: "no-cors", cache: "no-store", signal: AbortSignal.timeout(2000) });
+    } catch {
+      await setStatus({ state: "waiting", client: null, error: null });
+      return scheduleRetry();
+    }
+    if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
     let sock;
     try {
-      sock = new WebSocket(`ws://127.0.0.1:${Number(cfg.port) || DEFAULTS.port}/orbita`);
+      sock = new WebSocket(`ws://127.0.0.1:${port}/orbita`);
     } catch (e) {
       await setStatus({ state: "error", error: e.message });
       return scheduleRetry();

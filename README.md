@@ -4,6 +4,14 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.22.1
+
+- **Corrigido: “Module UserPrefs was not found” / “Module getPushname was not found”** em chrome://extensions. O problema estava na biblioteca que conversa com o WhatsApp Web (WA-JS 4.6.0):
+  - **Causa:** o WhatsApp registra alguns módulos antes de deixá-los prontos. Se a Órbita perguntava cedo, a biblioteca guardava “não existe” para sempre, e a extensão podia ficar sem saber o número da própria conta, o que afeta os envios.
+  - **Correção:** a mesma que a equipe do WA-JS já fez (ainda sem versão publicada). Agora a biblioteca procura de novo, e a Órbita só lê o número e o nome da conta com o WhatsApp pronto.
+- **Agente local (MCP) sem erro vermelho quando o agente está fechado.** A extensão confere em silêncio se o servidor local está no ar antes de conectar. Antes, cada tentativa gerava “WebSocket connection … ERR_CONNECTION_REFUSED” em chrome://extensions.
+- O aviso “Allow attribute will take precedence over 'allowfullscreen'” vem do próprio WhatsApp Web, não da Órbita, e não tem efeito.
+
 ## Novidades da 1.22.0
 
 - **Agente local (MCP).** Um agente de IA no seu computador (Claude Desktop, Claude Code, Cursor, Windsurf…) passa a usar a Órbita pelo protocolo MCP: ler e analisar conversas, organizar leads, agendar, montar listas e rascunhos de campanha e, se você permitir, enviar mensagens.
@@ -300,6 +308,7 @@ Os testes de ponta a ponta carregam a extensão num Chromium com um WhatsApp Web
 | `4-ui-defaults.json` | `js/dashboard.js`, `js/popup.js` | Padrão da UI com `batchSize: 0` | Padrão `batchSize: 25`, `batchPauseMin: 10` |
 | `10-ficha-lead.json` | `js/dashboard.js` | CRM só com etapa, tags e notas | Ficha do lead (`js/lead-form.js`) no card do cliente; clientes do Kanban trazem `lead`/`deal` e o card mostra temperatura e valor |
 | `15-opencode.json` | `js/service_worker.js` | Sem OpenCode Zen nas variações/assistente | Provedor `opencode` (https://opencode.ai/zen/v1) e preferência pelo `nemotron-3-ultra-free` |
+| `16-wajs-loader-miss.json` | `js/wa-js.js` | “Module UserPrefs was not found” / “getPushname was not found”: o WA-JS 4.6.0 guardava para sempre um “não encontrado” de módulos que o WhatsApp registra antes de deixar prontos | Mesma correção do WA-JS (commit 3d912125, ainda sem versão no npm): o “não encontrado” vale só 1 s no carregador Meta; e o status só lê o número/nome da conta com o WhatsApp pronto |
 | `14-resumo.json` | `js/dashboard.js` | Sem resumo das conversas | Cartão “Resumo do WhatsApp” na Visão geral (`js/summary-card.js`) e rota `#/resumo` (`resumo.html` em iframe) |
 | `13-modulo-email.json` | `js/dashboard.js` | Sem e-mail marketing | Módulo `email` (padrão desligado), item “E-mail” no menu e rota `#/email` (`email.html` em iframe) |
 | `12-importar-grupos.json` | `js/dashboard.js` | Importar do WhatsApp só lia agenda e conversas | Escolha “Agenda e conversas” / “Grupos” no topo da aba “Do WhatsApp” (`js/group-import.js`) |
@@ -334,6 +343,7 @@ node patches/patch.mjs js/dashboard.js patches/12-importar-grupos.json
 node patches/patch.mjs js/dashboard.js patches/13-modulo-email.json
 node patches/patch.mjs js/dashboard.js patches/14-resumo.json
 node patches/patch.mjs js/service_worker.js patches/15-opencode.json
+node patches/patch.mjs js/wa-js.js patches/16-wajs-loader-miss.json
 ```
 
 `options.html`, `js/ia-options.js` e as entradas `options_ui` / `https://api.groq.com/*` do `manifest.json` não são patches: copie-os para o build novo.

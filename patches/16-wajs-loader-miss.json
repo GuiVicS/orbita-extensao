@@ -1,0 +1,18 @@
+[
+  {
+    "before": "const h=new Map,b=new Map;",
+    "after": "const h=new Map,b=new Map,__orbMiss=new Map;"
+  },
+  {
+    "before": "if(null===o&&b.get(e)===Object.keys(t.moduleRequire.m).length)return null;",
+    "after": "if(null===o&&b.get(e)===Object.keys(t.moduleRequire.m).length&&(\"meta\"!==t.loaderType||Date.now()-(__orbMiss.get(e)??0)<1e3))return null;"
+  },
+  {
+    "before": "h.set(e,null),b.set(e,i.length),null}",
+    "after": "h.set(e,null),b.set(e,i.length),__orbMiss.set(e,Date.now()),null}"
+  },
+  {
+    "before": "function g(){const e=n(),t=Boolean(e),r=t?l():c();let o,i,s;try{o=a(e?.conn?.getMyUserId?.())||void 0}catch{}try{i=e?.profile?.getMyProfileName?.()||void 0}catch{}",
+    "after": "function g(){const e=n(),t=Boolean(e),r=t?l():c();let o,i,s;if(t&&d()){try{o=a(e?.conn?.getMyUserId?.())||void 0}catch{}try{i=e?.profile?.getMyProfileName?.()||void 0}catch{}}"
+  }
+]
