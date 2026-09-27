@@ -4,6 +4,10 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.22.4
+
+- **Envio automático pelo agente local mais fácil de achar.** A opção "Pedir minha confirmação a cada envio" (desmarcada = o agente envia sozinho, sem aprovar cada mensagem) agora aparece também em "Ações permitidas, uma a uma", junto das ações de envio. As duas caixas ficam sincronizadas, e a descrição das ferramentas de envio explica a opção.
+
 ## Novidades da 1.22.3
 
 - **Agente local (MCP) com vários agentes ao mesmo tempo.**

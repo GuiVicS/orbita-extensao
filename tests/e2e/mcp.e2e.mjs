@@ -247,6 +247,17 @@ await opt.click('#mcpPending [data-ok="0"]');
 assert.match((await cancel).error, /não confirmado/);
 assert.equal(await wa.evaluate(() => __store["5511999998888@c.us"].length), count);
 
+// ---- sem confirmação (opção também na lista de ações): envia direto
+assert.equal(await opt.isChecked("#mcpTools [data-confirm]"), true);
+await opt.uncheck("#mcpTools [data-confirm]"); // o diálogo "Tem certeza?" é aceito
+await opt.waitForFunction(() => !document.getElementById("mcpConfirm").checked); // as duas caixas acompanham
+const n0 = await wa.evaluate(() => __store["5511999998888@c.us"].length);
+const direct = await ag.tool("send_message", { chatId: "5511999998888@c.us", text: "Enviada sem confirmação" });
+assert.equal(direct.ok, true, JSON.stringify(direct));
+assert.equal(await opt.locator("#mcpPending [data-decide]").count(), 0, "nada esperando aprovação");
+await waitFor(async () => (await wa.evaluate(() => __store["5511999998888@c.us"].length)) > n0);
+assert.equal(await wa.evaluate(() => __store["5511999998888@c.us"].at(-1).body), "Enviada sem confirmação");
+
 // ---- registro de atividade
 await opt.click("#mcpSec details:has(#mcpLog) summary");
 await opt.waitForFunction(() => /Enviar mensagem no WhatsApp/.test(document.getElementById("mcpLog").textContent));

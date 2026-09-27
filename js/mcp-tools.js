@@ -139,10 +139,10 @@
     // ------------------------------------------------------------ enviar (WhatsApp)
     {
       name: "send_message", level: "send", title: "Enviar mensagem no WhatsApp",
-      description: "Envia uma mensagem de texto pelo WhatsApp Web. Se a conversa tiver tradução ligada, escreva em português: a Órbita traduz antes. Pode exigir sua confirmação no computador (Opções → Agente local).",
+      description: "Envia uma mensagem de texto pelo WhatsApp Web. Se a conversa tiver tradução ligada, escreva em português: a Órbita traduz antes. Se “Pedir minha confirmação a cada envio” estiver ligado (Opções → Agente local), espera o usuário aprovar no computador.",
       inputSchema: obj({ chatId: CHAT, phone: PHONE, text: str("Texto (formatação do WhatsApp: *negrito*, _itálico_)"), replyTo: str("Id da mensagem a responder (opcional)") }, ["text"]),
     },
-    { name: "send_quick_reply", level: "send", title: "Enviar resposta rápida", description: "Envia uma resposta rápida cadastrada (texto, áudio, mídia) numa conversa. Pode exigir confirmação.", inputSchema: obj({ chatId: CHAT, quickReplyId: str("Id da resposta rápida (list_quick_replies)") }, ["chatId", "quickReplyId"]) },
+    { name: "send_quick_reply", level: "send", title: "Enviar resposta rápida", description: "Envia uma resposta rápida cadastrada (texto, áudio, mídia) numa conversa. Pode esperar a aprovação do usuário (mesma opção do send_message).", inputSchema: obj({ chatId: CHAT, quickReplyId: str("Id da resposta rápida (list_quick_replies)") }, ["chatId", "quickReplyId"]) },
   ];
 
   const PROMPTS = [

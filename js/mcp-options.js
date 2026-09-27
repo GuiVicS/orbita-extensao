@@ -67,12 +67,13 @@
     const groups = ["read", "organize", "send"];
     $("mcpToolCount").textContent = `${TOOLS.filter((t) => cfg.perms[t.level] && !cfg.disabled.includes(t.name)).length} de ${TOOLS.length} liberadas`;
     $("mcpTools").innerHTML = groups
-      .map((g) => `<h3>${esc(LEVELS[g])}${cfg.perms[g] ? "" : " — <span class=status>grupo desligado</span>"}</h3>${TOOLS.filter((t) => t.level === g)
+      .map((g) => `<h3>${esc(LEVELS[g])}${cfg.perms[g] ? "" : " — <span class=status>grupo desligado</span>"}</h3>${g === "send" ? `<label class="inline sub mtool"><input type=checkbox data-confirm ${cfg.confirmSend ? "checked" : ""} ${cfg.perms.send ? "" : "disabled"}> <span><b>Pedir minha confirmação a cada envio</b><br><small class=hint>Desmarcado, o agente envia direto, sem você aprovar cada mensagem.</small></span></label>` : ""}${TOOLS.filter((t) => t.level === g)
         .map((t) => `<label class="inline sub mtool"><input type=checkbox data-tool="${esc(t.name)}" ${!cfg.disabled.includes(t.name) ? "checked" : ""} ${cfg.perms[g] ? "" : "disabled"}> <span><b>${esc(t.title)}</b> <code>${esc(t.name)}</code><br><small class=hint>${esc(t.description)}</small></span></label>`)
         .join("")}`)
       .join("");
   }
   $("mcpTools").addEventListener("change", async (e) => {
+    if (e.target.dataset.confirm !== undefined) return setConfirm(e.target);
     const name = e.target.dataset.tool;
     if (!name) return;
     const set = new Set(cfg.disabled);
@@ -142,10 +143,14 @@
     if (el.checked && !confirm("Permitir que o agente envie mensagens pelo seu WhatsApp?\n\nCom “Pedir minha confirmação” ligado, cada envio aparece para você aprovar antes.")) el.checked = false;
     cfg.perms.send = el.checked;
   });
-  bind("mcpConfirm", (el) => {
+  // a mesma opção aparece em dois lugares (grupo "Enviar" e lista de ações)
+  async function setConfirm(el) {
     if (!el.checked && !confirm("Sem confirmação, o agente envia mensagens direto, sem você revisar. Tem certeza?")) el.checked = true;
     cfg.confirmSend = el.checked;
-  });
+    await save();
+    paint();
+  }
+  $("mcpConfirm").addEventListener("change", (e) => setConfirm(e.target));
   bind("mcpPort", (el) => (cfg.port = Math.max(1024, Math.min(65535, Number(el.value) || 17345))));
   $("mcpFolder").addEventListener("input", async (e) => {
     cfg.folder = e.target.value;
