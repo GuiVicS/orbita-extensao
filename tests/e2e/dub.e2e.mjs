@@ -65,6 +65,29 @@ const f = dash.frameLocator('iframe[title="Conversas"]');
 await f.locator(".status.ready").waitFor({ timeout: 15000 });
 await f.locator(".item", { hasText: "John Smith" }).click();
 
+// tradução DESLIGADA nesta conversa: a gravação vai como está (sem dublagem, sem transcrição)
+await dash.waitForTimeout(1500); // as vozes recebidas do John são transcritas ao abrir
+await sw.evaluate(() => (globalThis.__calls = []));
+const rawBefore = await wa.evaluate(() => __store["5511999998888@c.us"].length);
+await f.locator("#micBtn").click();
+await f.locator("#vcStop").waitFor();
+await dash.waitForTimeout(1200);
+await f.locator("#vcStop").click();
+await (async () => { for (let i = 0; i < 60; i++) { if ((await wa.evaluate(() => __store["5511999998888@c.us"].length)) > rawBefore) return; await dash.waitForTimeout(200); } throw new Error("a gravação não foi enviada"); })();
+const raw = await wa.evaluate(() => window.__lastFile);
+console.log("sem tradução, enviado como está:", raw);
+assert.equal(raw.isPtt, true);
+assert.equal(raw.oggMagic, true);
+assert.equal(await f.locator("#vcDub").count(), 0);
+assert.deepEqual(await sw.evaluate(() => globalThis.__calls.map((c) => c.url)), [], "nada para a ElevenLabs nem transcrição");
+await f.locator(".b.me:last-child .player").waitFor({ timeout: 10000 }).catch(() => {});
+assert.equal(await f.locator(".b.me").last().locator(".aibadge").count(), 0, "não é voz gerada");
+
+// liga a tradução da conversa: a partir daqui a gravação é dublada
+await dash.evaluate(() => chrome.runtime.sendMessage({ channel: OrbitaChat.CHANNEL, op: OrbitaChat.OPS.SET_TRANSLATION, chatId: "5511999998888@c.us", enabled: true }));
+// ligar a tradução traduz as mensagens já recebidas: espera essas chamadas terminarem
+await (async () => { let n = -1; for (let i = 0; i < 40; i++) { await dash.waitForTimeout(500); const c = await sw.evaluate(() => globalThis.__calls.length); if (c === n) return; n = c; } })();
+
 // modo áudio com a ElevenLabs configurada: o campo mostra as duas formas
 await f.locator("#voiceBtn").click();
 assert.match(await f.locator("#text").getAttribute("placeholder"), /Escreva, ou grave para dublar em inglês/);
@@ -86,8 +109,10 @@ assert.match(await f.locator(".pv").innerText(), /dublado em inglês pela Eleven
 await dash.screenshot({ path: shots + "/dublagem-previa.png" });
 const calls = await sw.evaluate(() => globalThis.__calls);
 console.log("chamadas:", calls.map((c) => `${c.method} ${c.url.replace("https://api.elevenlabs.io", "")}`));
-assert.ok(calls.every((c) => c.url.startsWith("https://api.elevenlabs.io/v1/dubbing")), "só a ElevenLabs: sem transcrição, tradução ou Fish Audio");
-const create = calls[0];
+// (com a tradução ligada, as mensagens de texto antigas da conversa são traduzidas em paralelo: não fazem parte da gravação)
+const audioCalls = calls.filter((c) => !c.url.endsWith("/chat/completions"));
+assert.ok(audioCalls.every((c) => c.url.startsWith("https://api.elevenlabs.io/v1/dubbing")), "só a ElevenLabs: sem transcrição nem Fish Audio");
+const create = audioCalls[0];
 console.log("envio:", create.form, create.head);
 assert.equal(create.form.target_lang, "en");
 assert.equal(create.form.source_lang, "pt");
@@ -132,7 +157,7 @@ await f.locator("#vcStop").click();
 await f.locator("#vcSend").waitFor({ timeout: 30000 });
 const outside = await sw.evaluate(() => globalThis.__calls.map((c) => c.url));
 console.log("fora do modo áudio:", outside.map((u) => u.replace("https://api.elevenlabs.io", "")));
-assert.ok(outside.length && outside.every((u) => u.startsWith("https://api.elevenlabs.io/v1/dubbing")), "só áudio para a ElevenLabs, sem transcrição");
+assert.ok(outside.filter((u) => !u.endsWith("/chat/completions")).every((u) => u.startsWith("https://api.elevenlabs.io/v1/dubbing")) && outside.some((u) => u.includes("elevenlabs")), "só áudio para a ElevenLabs, sem transcrição");
 await f.locator("#vcCancel").click();
 
 // Fish Audio como principal (com a chave da ElevenLabs): depois de gravar, as duas opções

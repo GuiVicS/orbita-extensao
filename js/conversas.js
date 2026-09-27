@@ -466,7 +466,8 @@
     const l = langOfAudio(m);
     return Boolean(l) && l !== S.settings.myLang;
   };
-  const canDubIn = (m) => !m.fromMe && m.type === "audio" && !m.revoked && S.hasEleven && dubbing() && m.audio?.transcriptStatus !== "empty";
+  // só em conversa com a tradução ligada (sem ela, os áudios ficam como vieram)
+  const canDubIn = (m) => !m.fromMe && m.type === "audio" && !m.revoked && S.hasEleven && dubbing() && translating() && m.audio?.transcriptStatus !== "empty";
 
   function dubBlock(m) {
     if (!canDubIn(m)) return "";
@@ -901,7 +902,7 @@
     vb.setAttribute("aria-pressed", String(S.voiceMode));
     $("#sendBtn").setAttribute("aria-label", S.voiceMode ? "Gerar áudio" : "Enviar mensagem");
     $("#sendBtn").innerHTML = icon(S.voiceMode ? "speaker" : "send", 18);
-    if (S.voiceMode && st.ok) ta.placeholder = S.hasEleven ? `Escreva, ou grave para dublar em ${langLabel(C.contactLangOf(S.current, S.settings))}` : `Escreva em ${langLabel(S.settings.myLang)}: vai como áudio${translating() ? ` em ${langLabel(C.contactLangOf(S.current, S.settings))}` : ""}`;
+    if (S.voiceMode && st.ok) ta.placeholder = S.hasEleven && translating() ? `Escreva, ou grave para dublar em ${langLabel(C.contactLangOf(S.current, S.settings))}` : `Escreva em ${langLabel(S.settings.myLang)}: vai como áudio${translating() ? ` em ${langLabel(C.contactLangOf(S.current, S.settings))}` : ""}`;
   }
 
   function trButton(c) {
@@ -1655,6 +1656,8 @@
     if (v?.stage !== "recording") return;
     clearInterval(v.timer);
     const blob = await v.rec.stop();
+    // Conversa sem tradução: a gravação vai como está, igual no WhatsApp (nada de dublagem)
+    if (!translating()) return sendRecording(blob, (Date.now() - v.start) / 1000);
     // ElevenLabs como opção principal: a gravação vai direto para a dublagem,
     // só o áudio (nada de transcrição nem de texto no caminho)
     if (S.hasEleven && dubbing()) return dubRecording(blob);
@@ -1733,6 +1736,31 @@
     } finally {
       clearInterval(tick);
     }
+  }
+
+  async function sendRecording(blob, seconds) {
+    const chatId = S.current.chatId;
+    const ta = $("#text");
+    setVoice(null);
+    ta.readOnly = false;
+    const rp = takeReply("");
+    const temp = { id: `pending-${Date.now()}`, chatId, fromMe: true, ts: Date.now(), type: "audio", text: "", quoted: rp.quoted, audio: { ptt: true, duration: Math.round(seconds) }, ack: 0, _pending: true, _new: true };
+    S.messages.push(temp);
+    renderComposer();
+    renderMessages({ toBottom: true });
+    try {
+      const ogg = await A.toOggOpus(blob); // formato da mensagem de voz do WhatsApp
+      const msg = await call(C.OPS.SEND_RECORDING, { chatId, data: await blobToB64(ogg.blob), mime: ogg.blob.type || "audio/ogg; codecs=opus", duration: ogg.duration, ...rp.send });
+      const i = S.messages.indexOf(temp);
+      if (i >= 0) {
+        if (S.messages.some((m) => m.id === msg.id)) S.messages.splice(i, 1);
+        else S.messages[i] = msg;
+      }
+    } catch (e) {
+      S.messages = S.messages.filter((m) => m !== temp);
+      toast(`Áudio não enviado: ${e.message}`, "err");
+    }
+    if (S.current?.chatId === chatId) renderMessages({ toBottom: true });
   }
 
   async function sendVoice() {

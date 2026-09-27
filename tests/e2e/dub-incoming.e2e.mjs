@@ -61,6 +61,13 @@ await page.reload();
 await page.waitForSelector(".status.ready", { timeout: 15000 });
 await page.click(".item >> text=John Smith");
 
+// 0) tradução desligada na conversa: transcreve, mas NÃO dubla (nem oferece)
+await page.waitForSelector('[data-id$="_v1"] .transcript', { timeout: 20000 });
+await page.waitForTimeout(2500);
+assert.equal(await page.locator(".dubin").count(), 0);
+assert.equal(await sw.evaluate(() => (globalThis.__eleven || []).filter((c) => c.method === "POST").length), 0, "sem tradução, nada vai para a ElevenLabs");
+await page.evaluate(() => chrome.runtime.sendMessage({ channel: OrbitaChat.CHANNEL, op: OrbitaChat.OPS.SET_TRANSLATION, chatId: "5511999998888@c.us", enabled: true }));
+
 // 1) áudio curto em inglês: transcrito (sempre) e dublado sozinho para o português
 const v1 = '[data-id$="_v1"]';
 await page.waitForSelector(`${v1} .transcript`, { timeout: 20000 });

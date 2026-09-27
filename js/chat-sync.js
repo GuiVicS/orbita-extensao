@@ -900,6 +900,8 @@
         // transcrição nem pelo Fish Audio.
         const settings = await C.loadSettings();
         const chat = await C.getChat(req.chatId);
+        // só dubla em conversa com a tradução ligada; sem ela, a gravação vai como está
+        if (!chat?.translation?.enabled) throw new Error("A tradução está desligada nesta conversa: o áudio vai sem dublagem.");
         const lang = C.contactLangOf(chat, settings);
         const audio = b64ToBlob(String(req.data || ""), String(req.mime || "audio/wav"));
         if (req.durationSec > settings.maxVoiceSec) throw new Error(`A gravação tem ${Math.round(req.durationSec)} s, acima do limite de ${settings.maxVoiceSec} s para mensagens de voz.`);
@@ -929,6 +931,7 @@
         const m = await C.getMessage(id);
         if (!m || m.fromMe || m.type !== "audio" || m.revoked) throw new Error("Só dá para dublar áudios recebidos.");
         const chat = await C.getChat(m.chatId);
+        if (!chat?.translation?.enabled) throw new Error("Ligue a tradução desta conversa para dublar os áudios dela.");
         const from = m.audio?.transcriptLang || m.lang || chat?.translation?.detectedLang || "auto";
         if (from === settings.myLang) throw new Error("Este áudio já está no seu idioma.");
         const d = m.audio?.dub;
@@ -981,6 +984,21 @@
           const n = await exec({ op: C.TAB_CMDS.SEND_TEXT, chatId: req.chatId, text: notice }, 60000).catch(() => null);
           if (n) await onIncoming(n, { chatId: req.chatId });
         }
+        return msg;
+      }
+
+      case C.OPS.SEND_RECORDING: {
+        // Conversa sem tradução: a sua gravação sai como mensagem de voz comum,
+        // na sua voz, sem ElevenLabs, sem transcrição e sem Fish Audio.
+        const data = String(req.data || "");
+        if (!req.chatId || !data) throw new Error("Gravação vazia.");
+        const duration = Number(req.duration) || 0;
+        if (!(duration > 0.3)) throw new Error("Gravação curta demais.");
+        const mime = String(req.mime || "audio/ogg; codecs=opus");
+        const msg = await exec({ op: C.TAB_CMDS.SEND_VOICE, ...(await replyOf(req)), chatId: req.chatId, data, mime, duration }, 120000);
+        Object.assign(msg, { audio: { ...(msg.audio || {}), ptt: true, duration: Math.round(duration) } });
+        await C.putMedia(msg.id, b64ToBlob(data, mime)); // o player toca sem baixar de novo
+        await onIncoming(msg, { chatId: req.chatId });
         return msg;
       }
 

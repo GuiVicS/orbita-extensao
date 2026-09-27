@@ -38,6 +38,7 @@
     VOICE_DUB: "audio.dub", // dubla a gravação (ElevenLabs), áudio → áudio
     DUB_INCOMING: "audio.dubIncoming", // dubla um áudio recebido para o seu idioma (ElevenLabs), só o áudio
     SEND_AUDIO: "chat.sendAudio", // envia a voz gerada como mensagem de voz
+    SEND_RECORDING: "chat.sendRecording", // envia a sua gravação como está (conversa sem tradução)
     CRM_CHANGED: "crm.changed", // o CRM foi editado nas Conversas: refaz o vínculo da conversa
     AVATAR: "chat.avatar", // busca/atualiza a foto de perfil da conversa
     QR_PREPARE: "qr.prepare", // resposta rápida: traduz os passos para a prévia (tradução ligada)
