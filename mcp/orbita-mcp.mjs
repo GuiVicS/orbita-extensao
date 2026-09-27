@@ -70,27 +70,30 @@ const VERSION = (() => {
 })();
 
 // ---------------------------------------------------------------- WebSocket (RFC 6455, mínimo)
-function encodeFrame(text) {
-  const payload = Buffer.from(text, "utf8");
+// mask = true do lado cliente (retransmissor → servidor principal), como pede o protocolo
+function frame(op, payload, mask) {
   const len = payload.length;
-  const head = len < 126 ? Buffer.from([0x81, len]) : len < 65536 ? Buffer.from([0x81, 126, len >> 8, len & 255]) : Buffer.concat([Buffer.from([0x81, 127]), (() => { const b = Buffer.alloc(8); b.writeBigUInt64BE(BigInt(len)); return b; })()]);
-  return Buffer.concat([head, payload]);
-}
-function control(op, data = Buffer.alloc(0)) {
-  return Buffer.concat([Buffer.from([0x80 | op, data.length]), data]);
+  const head = len < 126 ? Buffer.from([0x80 | op, len]) : len < 65536 ? Buffer.from([0x80 | op, 126, len >> 8, len & 255]) : Buffer.concat([Buffer.from([0x80 | op, 127]), (() => { const b = Buffer.alloc(8); b.writeBigUInt64BE(BigInt(len)); return b; })()]);
+  if (!mask) return Buffer.concat([head, payload]);
+  head[1] |= 0x80;
+  const key = crypto.randomBytes(4);
+  return Buffer.concat([head, key, Buffer.from(payload.map((x, i) => x ^ key[i % 4]))]);
 }
 
 class Peer {
-  constructor(socket) {
+  constructor(socket, { mask = false, head } = {}) {
     this.socket = socket;
+    this.mask = mask;
     this.buf = Buffer.alloc(0);
     this.parts = [];
     this.onText = () => {};
     this.onClose = () => {};
     this.closed = false;
+    this.lastSeen = Date.now();
     socket.on("data", (d) => this.feed(d));
     socket.on("close", () => this.finish());
     socket.on("error", () => this.finish());
+    if (head?.length) this.feed(head);
   }
   finish() {
     if (this.closed) return;
@@ -98,19 +101,19 @@ class Peer {
     this.onClose();
   }
   send(obj) {
-    if (!this.closed) this.socket.write(encodeFrame(JSON.stringify(obj)));
+    if (!this.closed) this.socket.write(frame(0x1, Buffer.from(JSON.stringify(obj), "utf8"), this.mask));
   }
   close(code = 1000, reason = "") {
     if (this.closed) return;
-    const r = Buffer.from(reason.slice(0, 100), "utf8");
-    const data = Buffer.concat([Buffer.from([code >> 8, code & 255]), r]);
+    const data = Buffer.concat([Buffer.from([code >> 8, code & 255]), Buffer.from(reason.slice(0, 100), "utf8")]);
     try {
-      this.socket.write(control(0x8, data));
+      this.socket.write(frame(0x8, data, this.mask));
       this.socket.end();
     } catch {}
     this.finish();
   }
   feed(chunk) {
+    this.lastSeen = Date.now();
     this.buf = Buffer.concat([this.buf, chunk]);
     for (;;) {
       if (this.buf.length < 2) return;
@@ -135,13 +138,13 @@ class Peer {
       if (this.buf.length < need) return;
       let data = this.buf.subarray(off + (masked ? 4 : 0), need);
       if (masked) {
-        const mask = this.buf.subarray(off, off + 4);
-        data = Buffer.from(data.map((x, i) => x ^ mask[i % 4]));
+        const key = this.buf.subarray(off, off + 4);
+        data = Buffer.from(data.map((x, i) => x ^ key[i % 4]));
       }
       this.buf = this.buf.subarray(need);
       if (op === 0x8) return this.close(1000);
       if (op === 0x9) {
-        this.socket.write(control(0xa, data));
+        this.socket.write(frame(0xa, data, this.mask));
         continue;
       }
       if (op === 0xa) continue;
@@ -156,29 +159,71 @@ class Peer {
     }
   }
 }
+const acceptKey = (key) => crypto.createHash("sha1").update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest("base64");
+function safeEqual(a, b) {
+  const x = Buffer.from(String(a || ""));
+  const y = Buffer.from(String(b || ""));
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
+}
 
-// ---------------------------------------------------------------- extensão conectada
-let ext = null; // { peer, allowed: Set, version }
+// ---------------------------------------------------------------- estado
+// Um servidor principal por computador ("hub"): fica com a porta, recebe a
+// extensão em /orbita e outros agentes em /agent. Quem abre depois, com a
+// porta já ocupada por um hub, vira "relay": repassa as chamadas pelo hub.
+// Assim vários agentes (OpenCode, Claude, testes) usam a Órbita ao mesmo tempo.
+let mode = "starting"; // "hub" | "relay" | "starting"
+let ext = null; // hub: { peer, allowed: Set, version, extensionId }
+let remote = null; // relay: { peer, ext: bool, allowed: Set, version }
+const agents = new Set(); // hub: retransmissores conectados
 let checkRejected = false;
 let mcpClient = null; // clientInfo do agente
 const pending = new Map(); // id → { resolve, reject, timer }
+const started = Date.now();
+let listenError = null;
+let listening = false;
 
+function extState() {
+  return { type: "state", ext: Boolean(ext), version: ext?.version || null, allowed: ext ? [...ext.allowed] : [] };
+}
+function broadcastState() {
+  const st = extState();
+  for (const a of agents) a.peer.send(st);
+}
+function extGone(reason) {
+  for (const [id, p] of pending) {
+    clearTimeout(p.timer);
+    p.reject(new Error(reason));
+    pending.delete(id);
+  }
+}
+
+// ---------------------------------------------------------------- servidor principal (hub)
 const server = http.createServer((req, res) => {
-  res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
-  res.end(`Órbita MCP ${VERSION}: ${ext ? "extensão conectada" : "aguardando a extensão"}\n`);
+  res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  res.end(`${JSON.stringify({
+    app: "orbita-mcp",
+    version: VERSION,
+    message: `Órbita MCP ${VERSION}: ${ext ? "extensão conectada" : "aguardando a extensão"}`,
+    extension: { connected: Boolean(ext), version: ext?.version || null, tools: ext?.allowed.size || 0 },
+    agents: agents.size + 1,
+    uptimeSec: Math.round((Date.now() - started) / 1000),
+  })}\n`);
 });
-server.on("upgrade", (req, socket) => {
+server.on("upgrade", (req, socket, head) => {
   const origin = String(req.headers.origin || "");
   const key = req.headers["sec-websocket-key"];
-  // só a extensão (chrome-extension://…): sites abertos no navegador não conseguem conectar
-  if (!origin.startsWith("chrome-extension://") || !key || new URL(req.url, "http://x").pathname !== "/orbita") {
+  const route = new URL(req.url, "http://x").pathname;
+  // /orbita: só a extensão (chrome-extension://…). /agent: só programas locais —
+  // navegadores sempre mandam Origin, então sites abertos não chegam em nenhum dos dois.
+  const ok = key && ((route === "/orbita" && origin.startsWith("chrome-extension://")) || (route === "/agent" && !origin));
+  if (!ok) {
     socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
     return;
   }
-  const accept = crypto.createHash("sha1").update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest("base64");
-  socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+  socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${acceptKey(key)}\r\n\r\n`);
   socket.setNoDelay(true);
-  const peer = new Peer(socket);
+  const peer = new Peer(socket, { head });
+  if (route === "/agent") return acceptAgent(peer);
   let authed = false;
   const helloTimer = setTimeout(() => !authed && peer.close(4001, "sem apresentação"), 5000);
   peer.onText = (text) => {
@@ -194,13 +239,25 @@ server.on("upgrade", (req, socket) => {
         checkRejected = true;
         return peer.close(4001, "token inválido");
       }
+      // a extensão sempre se apresenta com versão e id; sem isso não é a Órbita
+      if (typeof msg.version !== "string" || typeof msg.extensionId !== "string" || !msg.extensionId) {
+        log("conexão recusada: apresentação incompleta (não parece a extensão Órbita)");
+        return peer.close(4001, "apresentação inválida");
+      }
+      // uma extensão saudável não é derrubada por outra conexão; a mesma extensão
+      // reconectando (service worker reiniciado) ou uma que parou de responder, sim
+      if (ext && ext.extensionId !== msg.extensionId && Date.now() - ext.peer.lastSeen < 45000) {
+        log(`conexão recusada: já há uma extensão conectada (${ext.extensionId})`);
+        return peer.close(4003, "outra extensão já está conectada");
+      }
       authed = true;
       clearTimeout(helloTimer);
-      if (ext) ext.peer.close(4002, "substituída por outra conexão");
-      ext = { peer, allowed: new Set(msg.allowed || []), version: msg.version };
+      if (ext) ext.peer.close(4002, "substituída pela nova conexão da mesma extensão");
+      ext = { peer, allowed: new Set(msg.allowed || []), version: msg.version, extensionId: msg.extensionId };
       log(`extensão conectada (v${msg.version}, ${ext.allowed.size} ferramentas liberadas)`);
       peer.send({ type: "welcome", server: { name: "orbita-mcp", version: VERSION }, client: mcpClient });
       notifyToolsChanged();
+      broadcastState();
       return;
     }
     if (msg.type === "result") {
@@ -213,6 +270,7 @@ server.on("upgrade", (req, socket) => {
     if (msg.type === "allowed") {
       ext.allowed = new Set(msg.allowed || []);
       notifyToolsChanged();
+      broadcastState();
     }
   };
   peer.onClose = () => {
@@ -220,40 +278,161 @@ server.on("upgrade", (req, socket) => {
     if (ext?.peer !== peer) return;
     ext = null;
     log("extensão desconectada");
-    for (const [id, p] of pending) {
-      clearTimeout(p.timer);
-      p.reject(new Error("A extensão desconectou durante a operação."));
-      pending.delete(id);
-    }
+    extGone("A extensão desconectou durante a operação.");
     notifyToolsChanged();
+    broadcastState();
   };
 });
-function safeEqual(a, b) {
-  const x = Buffer.from(String(a || ""));
-  const y = Buffer.from(String(b || ""));
-  return x.length === y.length && crypto.timingSafeEqual(x, y);
-}
-// mantém o service worker da extensão acordado e detecta queda
-setInterval(() => ext?.peer.send({ type: "ping" }), 20000).unref();
 
-server.on("error", (e) => {
-  if (e.code === "EADDRINUSE") log(`a porta ${PORT} já está em uso (outro agente com a Órbita aberto?). Feche o outro ou mude a porta nas Opções e aqui (ORBITA_MCP_PORT).`);
-  else log("erro no servidor local:", e.message);
+// outro agente usando este servidor principal
+function acceptAgent(peer) {
+  let agent = null;
+  const helloTimer = setTimeout(() => !agent && peer.close(4001, "sem apresentação"), 5000);
+  peer.onText = async (text) => {
+    let msg;
+    try {
+      msg = JSON.parse(text);
+    } catch {
+      return;
+    }
+    if (!agent) {
+      if (msg.type !== "agent-hello" || !TOKEN || !safeEqual(msg.token, TOKEN)) return peer.close(4001, "token inválido");
+      clearTimeout(helloTimer);
+      agent = { peer, client: msg.client || null };
+      agents.add(agent);
+      log(`agente adicional conectado (${agent.client?.name || "sem nome"}); agora são ${agents.size + 1}`);
+      return peer.send(extState());
+    }
+    if (msg.type === "client") agent.client = msg.client || agent.client;
+    if (msg.type === "call") {
+      try {
+        const result = await callExtension(msg.name, msg.args, agent.client);
+        peer.send({ type: "result", id: msg.id, ok: true, result });
+      } catch (e) {
+        peer.send({ type: "result", id: msg.id, ok: false, error: e.message });
+      }
+    }
+  };
+  peer.onClose = () => {
+    clearTimeout(helloTimer);
+    if (agent && agents.delete(agent)) log(`agente adicional saiu; agora são ${agents.size + 1}`);
+  };
+}
+
+// mantém o service worker da extensão acordado e detecta queda
+setInterval(() => {
+  ext?.peer.send({ type: "ping" });
+  if (remote) remote.peer.send({ type: "ping" });
+}, 20000).unref();
+
+// ---------------------------------------------------------------- retransmissor (relay)
+function hubStatus() {
+  return new Promise((resolve) => {
+    const req = http.get({ host: "127.0.0.1", port: PORT, path: "/", timeout: 2000 }, (res) => {
+      let body = "";
+      res.on("data", (d) => (body += d));
+      res.on("end", () => {
+        try {
+          const j = JSON.parse(body);
+          resolve(j?.app === "orbita-mcp" ? j : null);
+        } catch {
+          resolve(null);
+        }
+      });
+    });
+    req.on("error", () => resolve(null));
+    req.on("timeout", () => req.destroy());
+  });
+}
+function connectRelay() {
+  return new Promise((resolve) => {
+    const key = crypto.randomBytes(16).toString("base64");
+    const req = http.request({ host: "127.0.0.1", port: PORT, path: "/agent", headers: { Connection: "Upgrade", Upgrade: "websocket", "Sec-WebSocket-Version": "13", "Sec-WebSocket-Key": key } });
+    req.on("upgrade", (res, socket, head) => {
+      if (res.headers["sec-websocket-accept"] !== acceptKey(key)) return socket.destroy(), resolve(false);
+      const peer = new Peer(socket, { mask: true, head });
+      remote = { peer, ext: false, allowed: new Set(), version: null };
+      mode = "relay";
+      peer.send({ type: "agent-hello", token: TOKEN, client: mcpClient });
+      peer.onText = (text) => {
+        let msg;
+        try {
+          msg = JSON.parse(text);
+        } catch {
+          return;
+        }
+        if (msg.type === "state") {
+          const before = remote.ext;
+          Object.assign(remote, { ext: msg.ext, allowed: new Set(msg.allowed || []), version: msg.version });
+          if (!before && msg.ext) log(`extensão conectada pelo servidor principal (v${msg.version}, ${remote.allowed.size} ferramentas liberadas)`);
+          notifyToolsChanged();
+        } else if (msg.type === "result") {
+          const p = pending.get(msg.id);
+          if (!p) return;
+          pending.delete(msg.id);
+          clearTimeout(p.timer);
+          msg.ok ? p.resolve(msg.result) : p.reject(new Error(msg.error || "Erro na extensão."));
+        }
+      };
+      peer.onClose = () => {
+        if (remote?.peer !== peer) return;
+        remote = null;
+        mode = "starting";
+        log("o servidor principal fechou; assumindo a porta…");
+        extGone("O servidor principal da Órbita fechou durante a operação. Tente de novo.");
+        notifyToolsChanged();
+        setTimeout(start, 300 + Math.random() * 700);
+      };
+      resolve(true);
+    });
+    req.on("response", () => resolve(false));
+    req.on("error", () => resolve(false));
+    req.end();
+  });
+}
+
+// ---------------------------------------------------------------- início
+server.on("error", async (e) => {
   listenError = e;
+  if (e.code !== "EADDRINUSE") return log("erro no servidor local:", e.message);
+  // porta ocupada: se for outro servidor da Órbita, usa ele; senão, é conflito de verdade
+  const hub = await hubStatus();
+  if (hub && TOKEN && (await connectRelay())) {
+    log(`outro agente já está com a porta ${PORT}: usando o servidor dele (Órbita ${hub.version}). Vários agentes podem usar a Órbita ao mesmo tempo.`);
+    return;
+  }
+  if (hub) log(`a porta ${PORT} está com outro servidor da Órbita, mas não consegui me conectar a ele${TOKEN ? "" : " (falta o token)"}.`);
+  else log(`a porta ${PORT} está em uso por OUTRO programa. Mude a porta nas Opções → Agente local e aqui (ORBITA_MCP_PORT).`);
+  setTimeout(start, 10000);
 });
-let listenError = null;
-server.listen(PORT, "127.0.0.1", () => {
+server.on("listening", () => {
   listening = true;
-  log(`aguardando a extensão em ws://127.0.0.1:${PORT}/orbita`);
+  listenError = null;
+  mode = "hub";
+  log(`servidor principal: aguardando a extensão em ws://127.0.0.1:${PORT}/orbita`);
 });
-let listening = false;
+function start() {
+  if (mode === "hub" || mode === "relay") return;
+  try {
+    server.listen(PORT, "127.0.0.1");
+  } catch (e) {
+    log("erro ao abrir a porta:", e.message);
+  }
+}
+start();
 if (!TOKEN) log("ATENÇÃO: defina ORBITA_MCP_TOKEN com o token de Opções → Agente local (MCP).");
 
-function callExtension(name, args) {
+function currentAllowed() {
+  if (mode === "hub") return ext ? ext.allowed : null;
+  if (mode === "relay") return remote?.ext ? remote.allowed : null;
+  return null;
+}
+function callExtension(name, args, client = mcpClient) {
   if (!TOKEN) return Promise.reject(new Error("Falta o token: defina ORBITA_MCP_TOKEN na configuração deste servidor MCP (copie em Opções → Agente local da Órbita)."));
-  if (listenError?.code === "EADDRINUSE") return Promise.reject(new Error(`A porta ${PORT} já está em uso por outro agente conectado à Órbita. Feche o outro agente ou use outra porta (Opções → Agente local e ORBITA_MCP_PORT).`));
-  if (!ext) return Promise.reject(new Error("A Órbita não está conectada. Abra o Chrome com a extensão Órbita e ligue Opções → Agente local (MCP) — a conexão é automática em alguns segundos."));
-  if (!ext.allowed.has(name)) return Promise.reject(new Error(`A ferramenta ${name} está sem permissão. Libere em Opções → Agente local (MCP) da Órbita.`));
+  if (mode === "starting") return Promise.reject(new Error(listenError && !(listenError.code === "EADDRINUSE") ? `O servidor local não abriu: ${listenError.message}` : `A porta ${PORT} está em uso por outro programa (não é a Órbita). Mude a porta nas Opções → Agente local e em ORBITA_MCP_PORT.`));
+  const connected = mode === "hub" ? Boolean(ext) : Boolean(remote?.ext);
+  if (!connected) return Promise.reject(new Error("A Órbita não está conectada. Abra o Chrome com a extensão Órbita e ligue Opções → Agente local (MCP) — a conexão é automática em alguns segundos."));
+  if (!currentAllowed().has(name)) return Promise.reject(new Error(`A ferramenta ${name} está sem permissão. Libere em Opções → Agente local (MCP) da Órbita.`));
   const id = crypto.randomUUID();
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -261,7 +440,8 @@ function callExtension(name, args) {
       reject(new Error("A extensão demorou demais para responder."));
     }, CALL_TIMEOUT_MS);
     pending.set(id, { resolve, reject, timer });
-    ext.peer.send({ type: "call", id, name, args: args || {}, client: mcpClient });
+    const target = mode === "hub" ? ext.peer : remote.peer;
+    target.send({ type: "call", id, name, args: args || {}, client });
   });
 }
 
@@ -282,7 +462,7 @@ const INSTRUCTIONS = `Órbita é o CRM + WhatsApp do usuário (extensão do Chro
 - Campanhas são criadas só como rascunho; o usuário revisa e inicia no painel.`;
 
 function toolList() {
-  const allowed = ext?.allowed;
+  const allowed = currentAllowed();
   return CATALOG.TOOLS.filter((t) => !allowed || allowed.has(t.name)).map((t) => ({
     name: t.name,
     title: t.title,
@@ -300,6 +480,7 @@ async function handle(msg) {
       mcpClient = params?.clientInfo || null;
       const asked = params?.protocolVersion;
       ext?.peer.send({ type: "client", client: mcpClient });
+      remote?.peer.send({ type: "client", client: mcpClient });
       return reply(id, {
         protocolVersion: SUPPORTED.includes(asked) ? asked : SUPPORTED[0],
         capabilities: { tools: { listChanged: true }, prompts: {} },
@@ -375,15 +556,19 @@ if (CHECK) {
     out(true, `servidor: ${fileURLToPath(import.meta.url)}`);
     out(true, `catálogo: ${CATALOG.TOOLS.length} ferramentas, ${CATALOG.PROMPTS.length} roteiros (Órbita ${VERSION})`);
     out(Boolean(TOKEN), TOKEN ? `token definido (${TOKEN.slice(0, 4)}…)` : "token NÃO definido: passe --token SEU_TOKEN ou a variável ORBITA_MCP_TOKEN (Opções → Agente local)");
-    await new Promise((r) => setTimeout(r, 500));
-    out(listening, listening ? `porta ${PORT} aberta em 127.0.0.1` : `porta ${PORT} não abriu: ${listenError?.code === "EADDRINUSE" ? "já está em uso (outro agente ou outro teste rodando? feche-o)" : listenError?.message || "erro desconhecido"}`);
-    if (!listening || !TOKEN) process.exit(1);
+    for (let i = 0; i < 30 && mode === "starting"; i++) await new Promise((r) => setTimeout(r, 100));
+    if (mode === "hub") out(true, `porta ${PORT} aberta em 127.0.0.1 (servidor principal)`);
+    else if (mode === "relay") out(true, `porta ${PORT} já está com o servidor de outro agente da Órbita: este usa o dele (normal com vários agentes abertos)`);
+    else out(false, `porta ${PORT} não abriu: ${listenError?.code === "EADDRINUSE" ? "está em uso por OUTRO programa (não é a Órbita) — mude a porta nas Opções e aqui" : listenError?.message || "erro desconhecido"}`);
+    if (mode === "starting" || !TOKEN) process.exit(1);
     out(null, "esperando a extensão conectar (até 90 s). Confira: Chrome aberto, Opções → Agente local LIGADO, mesma porta e token…");
-    const start = Date.now();
-    while (!ext && Date.now() - start < Number(process.env.ORBITA_MCP_CHECK_WAIT_MS || 90000) && !checkRejected) await new Promise((r) => setTimeout(r, 500));
-    if (ext) out(true, `extensão conectada (Órbita ${ext.version}, ${ext.allowed.size} ações liberadas). Tudo certo: configure o agente com este mesmo comando, sem o --check.`);
+    const t0 = Date.now();
+    const connected = () => (mode === "hub" ? ext : remote?.ext ? remote : null);
+    while (!connected() && Date.now() - t0 < Number(process.env.ORBITA_MCP_CHECK_WAIT_MS || 90000) && !checkRejected) await new Promise((r) => setTimeout(r, 500));
+    const c = connected();
+    if (c) out(true, `extensão conectada (Órbita ${c.version}, ${c.allowed.size} ações liberadas). Tudo certo: configure o agente com este mesmo comando, sem o --check.`);
     else if (checkRejected) out(false, "a extensão tentou conectar, mas com OUTRO token. Copie a configuração de novo em Opções → Agente local.");
     else out(false, "a extensão não conectou. Verifique se o Agente local está ligado nas Opções, se a porta é a mesma e recarregue a extensão em chrome://extensions.");
-    process.exit(ext ? 0 : 1);
+    process.exit(c ? 0 : 1);
   })();
 }

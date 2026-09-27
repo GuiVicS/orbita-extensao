@@ -4,6 +4,18 @@ Build da extensão Órbita (Chrome MV3) para campanhas no WhatsApp Web.
 
 > A partir da **1.2.0** este build é gerado a partir do código-fonte (`npm run build`), que já inclui todas as correções abaixo. A pasta `patches/` fica só como histórico das correções feitas antes no build minificado — não reaplique.
 
+## Novidades da 1.22.3
+
+- **Agente local (MCP) com vários agentes ao mesmo tempo.**
+  - **Servidor principal:** o primeiro servidor aberto fica com a porta e com a extensão.
+  - **Demais agentes:** se outro agente (OpenCode, Claude, um teste no terminal) abrir o servidor, ele passa a usar o principal em vez de dar "porta em uso". Não é mais preciso matar processos `node.exe`.
+  - **Promoção automática:** se o principal fechar, um dos outros assume a porta sozinho, e a extensão reconecta nele.
+- **A extensão não é mais derrubada por outra conexão.**
+  - **Antes:** qualquer programa com o token substituía a Órbita (no log: "extensão conectada (vundefined, 3 ferramentas…)").
+  - **Agora:** a apresentação exige a versão e o ID da extensão. Uma extensão saudável só é substituída por ela mesma, reconectando.
+- **`http://127.0.0.1:17345/` responde em JSON** para checagem rápida: extensão conectada, versão, ações liberadas, agentes conectados e tempo no ar.
+- **`--check` entende vários agentes:** se a porta está com o servidor de outro agente da Órbita, ele diz isso em vez de acusar erro.
+
 ## Novidades da 1.22.2
 
 - **Agente local (MCP) com o OpenCode.** Opções → Agente local → "Configuração para" ganhou o **OpenCode (opencode.json)**, no formato dele: `"type": "local"`, `command` em lista e `environment`. O formato dos agentes Claude (`args`/`env`) não funciona no OpenCode.
